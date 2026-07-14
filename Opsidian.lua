@@ -23,6 +23,7 @@ local function CreateKeyWindow()
     bg.BackgroundTransparency = 0.95
     bg.Parent = gui
     
+    -- ЗВЕЗДЫ (ЕДИНСТВЕННЫЙ СВЕТ)
     for i = 1, 60 do
         local star = Instance.new("Frame")
         local size = 1 + math.random() * 2
@@ -51,6 +52,7 @@ local function CreateKeyWindow()
     mc.CornerRadius = UDim.new(0, 20)
     mc.Parent = main
     
+    -- НЕОНОВАЯ ОБВОДКА
     local glow = Instance.new("Frame")
     glow.Size = UDim2.new(1, 0, 1, 0)
     glow.BackgroundTransparency = 1
@@ -225,6 +227,7 @@ function StartObsidianBlack()
     -- НАСТРОЙКИ (50+ ФУНКЦИЙ)
     -- ============================================
     local settings = {
+        -- AIM (10)
         aimOn = true,
         silentOn = false,
         wallOn = false,
@@ -236,6 +239,7 @@ function StartObsidianBlack()
         prediction = true,
         visibleCheck = true,
         
+        -- FIRE (8)
         fireOn = false,
         fireRate = 0.1,
         triggerBot = false,
@@ -245,6 +249,7 @@ function StartObsidianBlack()
         killAuraRange = 20,
         antiAfk = false,
         
+        -- ESP (10)
         espOn = true,
         espType = "Highlight",
         espColor = "Violet",
@@ -256,6 +261,7 @@ function StartObsidianBlack()
         skeleton = false,
         boxFilled = false,
         
+        -- MOVEMENT (15)
         flyOn = false,
         noclipOn = false,
         speed = 16,
@@ -278,6 +284,7 @@ function StartObsidianBlack()
         teleportOn = false,
         teleportDistance = 50,
         
+        -- VISUAL (8)
         crosshairOn = true,
         crosshairColor = "Violet",
         crosshairStyle = "Dot",
@@ -288,6 +295,7 @@ function StartObsidianBlack()
         fogOn = false,
         bloom = false,
         
+        -- NEW FUNCTIONS (10)
         autoCollectOn = false,
         autoCollectRange = 30,
         autoCollectDelay = 0.5,
@@ -309,6 +317,9 @@ function StartObsidianBlack()
         autoClickRange = 20,
     }
 
+    -- ============================================
+    -- ПЕРЕМЕННЫЕ
+    -- ============================================
     local target = nil
     local lastShot = 0
     local flyBody = nil
@@ -331,6 +342,7 @@ function StartObsidianBlack()
         gui.ResetOnSpawn = false
         gui.Name = "ObsidianBlack"
         
+        -- ОСНОВНОЕ ОКНО (ЧЕРНЫЙ ФОН)
         local main = Instance.new("Frame")
         main.Size = UDim2.new(0, 480, 0, 640)
         main.Position = UDim2.new(0.5, -240, 0.02, 0)
@@ -345,6 +357,7 @@ function StartObsidianBlack()
         mc.CornerRadius = UDim.new(0, 25)
         mc.Parent = main
         
+        -- ТЕНЬ (ЧЕРНАЯ)
         local shadow = Instance.new("Frame")
         shadow.Size = UDim2.new(1, 30, 1, 30)
         shadow.Position = UDim2.new(0, -15, 0, -15)
@@ -356,6 +369,7 @@ function StartObsidianBlack()
         sc.CornerRadius = UDim.new(0, 25)
         sc.Parent = shadow
         
+        -- НЕОНОВАЯ ОБВОДКА
         local glow = Instance.new("Frame")
         glow.Size = UDim2.new(1, 0, 1, 0)
         glow.BackgroundTransparency = 1
@@ -366,6 +380,7 @@ function StartObsidianBlack()
         gbc.CornerRadius = UDim.new(0, 25)
         gbc.Parent = glow
         
+        -- УГЛЫ (НЕОНОВЫЕ)
         for _, data in ipairs({{0,0,0},{1,0,90},{0,1,-90},{1,1,180}}) do
             local corner = Instance.new("Frame")
             corner.Size = UDim2.new(0, 35, 0, 35)
@@ -380,6 +395,7 @@ function StartObsidianBlack()
             c.Parent = corner
         end
         
+        -- ВЕРХНИЙ БАННЕР (ЧЕРНЫЙ С ФИОЛЕТОВЫМ)
         local header = Instance.new("Frame")
         header.Size = UDim2.new(1, 0, 0, 65)
         header.BackgroundColor3 = Color3.fromRGB(5, 0, 15)
@@ -411,12 +427,13 @@ function StartObsidianBlack()
         version.Font = Enum.Font.Gotham
         version.Parent = header
         
+        -- КНОПКИ (ЧЕРНЫЕ)
         local closeBtn = Instance.new("TextButton")
         closeBtn.Size = UDim2.new(0.06, 0, 0.5, 0)
         closeBtn.Position = UDim2.new(0.88, 0, 0.25, 0)
         closeBtn.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
         closeBtn.BackgroundTransparency = 0.15
-        closeBtn.Text = "?"
+        closeBtn.Text = "✕"
         closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         closeBtn.TextScaled = true
         closeBtn.Font = Enum.Font.GothamBold
@@ -425,14 +442,13 @@ function StartObsidianBlack()
         local cb = Instance.new("UICorner")
         cb.CornerRadius = UDim.new(0, 8)
         cb.Parent = closeBtn
-        closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
         
         local toggleBtn = Instance.new("TextButton")
         toggleBtn.Size = UDim2.new(0.06, 0, 0.5, 0)
         toggleBtn.Position = UDim2.new(0.8, 0, 0.25, 0)
         toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
         toggleBtn.BackgroundTransparency = 0.15
-        toggleBtn.Text = "?"
+        toggleBtn.Text = "−"
         toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         toggleBtn.TextScaled = true
         toggleBtn.Font = Enum.Font.GothamBold
@@ -441,12 +457,8 @@ function StartObsidianBlack()
         local tb = Instance.new("UICorner")
         tb.CornerRadius = UDim.new(0, 8)
         tb.Parent = toggleBtn
-        local uiVisible = true
-        toggleBtn.MouseButton1Click:Connect(function()
-            uiVisible = not uiVisible
-            main.Visible = uiVisible
-        end)
         
+        -- РАЗМЕР (ЧЕРНЫЙ)
         local sizeFrame = Instance.new("Frame")
         sizeFrame.Size = UDim2.new(0.18, 0, 0, 28)
         sizeFrame.Position = UDim2.new(0.76, 0, 0.02, 0)
@@ -473,7 +485,7 @@ function StartObsidianBlack()
         minusBtn.Size = UDim2.new(0.3, 0, 1, 0)
         minusBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
         minusBtn.BackgroundTransparency = 0.2
-        minusBtn.Text = "?"
+        minusBtn.Text = "−"
         minusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         minusBtn.TextScaled = true
         minusBtn.Font = Enum.Font.GothamBold
@@ -512,6 +524,7 @@ function StartObsidianBlack()
             sizeLabel.Text = math.floor(uiSize * 100) .. "%"
         end)
         
+        -- ВКЛАДКИ (ЧЕРНЫЕ)
         local tabs = Instance.new("Frame")
         tabs.Size = UDim2.new(1, -20, 0, 40)
         tabs.Position = UDim2.new(0, 10, 0, 72)
@@ -524,15 +537,21 @@ function StartObsidianBlack()
         tc.CornerRadius = UDim.new(0, 14)
         tc.Parent = tabs
         
-        local tabNames = {"? AIM", "?? FIRE", "?? ESP", "?? MOVE", "?? VISUAL", "?? EXTRA"}
+        local tabNames = {"⚡ AIM", "🔥 FIRE", "🌈 ESP", "🏃 MOVE", "🎨 VISUAL", "⚙️ EXTRA"}
         local tabButtons = {}
         local tabContents = {}
         
-        local contentFrame = Instance.new("Frame")
-        contentFrame.Size = UDim2.new(1, -10, 1, -130)
-        contentFrame.Position = UDim2.new(0, 5, 0, 120)
-        contentFrame.BackgroundTransparency = 1
-        contentFrame.Parent = main
+        local contentContainer = Instance.new("Frame")
+        contentContainer.Size = UDim2.new(1, -20, 1, -130)
+        contentContainer.Position = UDim2.new(0, 10, 0, 120)
+        contentContainer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        contentContainer.BackgroundTransparency = 0.15
+        contentContainer.BorderSizePixel = 1
+        contentContainer.BorderColor3 = Color3.fromRGB(180, 60, 255)
+        contentContainer.Parent = main
+        local cc = Instance.new("UICorner")
+        cc.CornerRadius = UDim.new(0, 14)
+        cc.Parent = contentContainer
         
         for i, name in ipairs(tabNames) do
             local btn = Instance.new("TextButton")
@@ -549,113 +568,311 @@ function StartObsidianBlack()
             local bc = Instance.new("UICorner")
             bc.CornerRadius = UDim.new(0, 8)
             bc.Parent = btn
-            table.insert(tabButtons, btn)
+            tabButtons[i] = btn
             
-            local page = Instance.new("ScrollingFrame")
-            page.Size = UDim2.new(1, 0, 1, 0)
-            page.BackgroundTransparency = 1
-            page.ScrollBarThickness = 4
-            page.ScrollBarImageColor3 = Color3.fromRGB(180, 60, 255)
-            page.CanvasSize = UDim2.new(0, 0, 0, 0)
-            page.Parent = contentFrame
-            page.Visible = (i == 1)
-            table.insert(tabContents, page)
+            local content = Instance.new("ScrollingFrame")
+            content.Size = UDim2.new(1, -10, 1, -10)
+            content.Position = UDim2.new(0, 5, 0, 5)
+            content.BackgroundTransparency = 1
+            content.ScrollBarThickness = 4
+            content.ScrollBarImageColor3 = Color3.fromRGB(180, 60, 255)
+            content.CanvasSize = UDim2.new(0, 0, 2, 0)
+            content.Visible = (i == 1)
+            content.Parent = contentContainer
+            tabContents[i] = content
             
             btn.MouseButton1Click:Connect(function()
-                for _, b in ipairs(tabButtons) do
+                for j, b in ipairs(tabButtons) do
                     b.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
                     b.BackgroundTransparency = 0.6
+                    tabContents[j].Visible = false
                 end
                 btn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
                 btn.BackgroundTransparency = 0.2
-                for _, p in ipairs(tabContents) do
-                    p.Visible = false
-                end
-                page.Visible = true
+                content.Visible = true
             end)
         end
         
-        -- ============================================
-        -- ЗАПОЛНЕНИЕ ВКЛАДОК ТОГГЛАМИ (пример для AIM)
-        -- ============================================
-        local function addToggle(parent, text, settingName, yOffset)
+        closeBtn.MouseButton1Click:Connect(function()
+            gui:Destroy()
+        end)
+        
+        -- Функция для создания переключателя
+        local function createToggle(parent, text, default, callback)
             local toggle = Instance.new("Frame")
-            toggle.Size = UDim2.new(0.9, 0, 0, 35)
-            toggle.Position = UDim2.new(0.05, 0, 0, yOffset)
-            toggle.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+            toggle.Size = UDim2.new(1, 0, 0, 35)
+            toggle.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
             toggle.BackgroundTransparency = 0.3
-            toggle.BorderSizePixel = 0
+            toggle.BorderSizePixel = 1
+            toggle.BorderColor3 = Color3.fromRGB(100, 50, 150)
             toggle.Parent = parent
+            local tg = Instance.new("UICorner")
+            tg.CornerRadius = UDim.new(0, 8)
+            tg.Parent = toggle
             
             local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0.6, 0, 1, 0)
-            label.Position = UDim2.new(0.05, 0, 0, 0)
+            label.Size = UDim2.new(0.7, 0, 1, 0)
             label.BackgroundTransparency = 1
             label.Text = text
-            label.TextColor3 = Color3.fromRGB(255, 255, 255)
+            label.TextColor3 = Color3.fromRGB(220, 220, 255)
             label.TextScaled = true
             label.Font = Enum.Font.Gotham
             label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Position = UDim2.new(0.05, 0, 0, 0)
             label.Parent = toggle
             
-            local box = Instance.new("Frame")
-            box.Size = UDim2.new(0, 40, 0, 20)
-            box.Position = UDim2.new(0.85, 0, 0.5, -10)
-            box.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            box.BorderSizePixel = 0
-            box.Parent = toggle
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(0.2, 0, 0.7, 0)
+            btn.Position = UDim2.new(0.75, 0, 0.15, 0)
+            btn.BackgroundColor3 = default and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(30, 30, 30)
+            btn.Text = default and "ON" or "OFF"
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.TextScaled = true
+            btn.Font = Enum.Font.GothamBold
+            btn.BorderSizePixel = 0
+            btn.Parent = toggle
             local bc = Instance.new("UICorner")
-            bc.CornerRadius = UDim.new(0, 10)
-            bc.Parent = box
+            bc.CornerRadius = UDim.new(0, 6)
+            bc.Parent = btn
             
-            local dot = Instance.new("Frame")
-            dot.Size = UDim2.new(0, 18, 0, 18)
-            dot.Position = UDim2.new(0, 1, 0, 1)
-            dot.BackgroundColor3 = settings[settingName] and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(100, 100, 100)
-            dot.BorderSizePixel = 0
-            dot.Parent = box
-            local dc = Instance.new("UICorner")
-            dc.CornerRadius = UDim.new(0, 9)
-            dc.Parent = dot
-            
-            local state = settings[settingName]
-            local function update()
-                if state then
-                    TweenService:Create(dot, TweenInfo.new(0.2), {Position = UDim2.new(1, -19, 0, 1)}):Play()
-                    box.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-                    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                else
-                    TweenService:Create(dot, TweenInfo.new(0.2), {Position = UDim2.new(0, 1, 0, 1)}):Play()
-                    box.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-                    dot.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-                end
-            end
-            update()
-            
-            toggle.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    state = not state
-                    settings[settingName] = state
-                    update()
-                end
+            local isOn = default
+            btn.MouseButton1Click:Connect(function()
+                isOn = not isOn
+                btn.BackgroundColor3 = isOn and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(30, 30, 30)
+                btn.Text = isOn and "ON" or "OFF"
+                if callback then callback(isOn) end
             end)
+            
+            return toggle
         end
         
-        local y = 5
-        addToggle(tabContents[1], "Aim Enabled", "aimOn", y); y = y + 40
-        addToggle(tabContents[1], "Silent Aim", "silentOn", y); y = y + 40
-        addToggle(tabContents[1], "Wall Check", "wallOn", y); y = y + 40
+        -- Заполнение вкладок
+        -- AIM
+        createToggle(tabContents[1], "Aimbot", settings.aimOn, function(v) settings.aimOn = v end)
+        createToggle(tabContents[1], "Silent Aim", settings.silentOn, function(v) settings.silentOn = v end)
+        createToggle(tabContents[1], "Wall Check", settings.wallOn, function(v) settings.wallOn = v end)
+        createToggle(tabContents[1], "Aim Lock", settings.aimLock, function(v) settings.aimLock = v end)
+        createToggle(tabContents[1], "Prediction", settings.prediction, function(v) settings.prediction = v end)
+        createToggle(tabContents[1], "Visible Check", settings.visibleCheck, function(v) settings.visibleCheck = v end)
         
-        for _, page in ipairs(tabContents) do
-            page.CanvasSize = UDim2.new(0, 0, 0, y + 40)
-        end
+        -- FIRE
+        createToggle(tabContents[2], "Auto Fire", settings.fireOn, function(v) settings.fireOn = v end)
+        createToggle(tabContents[2], "Trigger Bot", settings.triggerBot, function(v) settings.triggerBot = v end)
+        createToggle(tabContents[2], "Burst Fire", settings.burstFire, function(v) settings.burstFire = v end)
+        createToggle(tabContents[2], "Kill Aura", settings.killAuraOn, function(v) settings.killAuraOn = v end)
+        createToggle(tabContents[2], "Anti AFK", settings.antiAfk, function(v) settings.antiAfk = v end)
         
-        return gui
+        -- ESP
+        createToggle(tabContents[3], "ESP", settings.espOn, function(v) settings.espOn = v end)
+        createToggle(tabContents[3], "Health", settings.showHealth, function(v) settings.showHealth = v end)
+        createToggle(tabContents[3], "Name", settings.showName, function(v) settings.showName = v end)
+        createToggle(tabContents[3], "Distance", settings.showDistance, function(v) settings.showDistance = v end)
+        createToggle(tabContents[3], "Tracers", settings.tracer, function(v) settings.tracer = v end)
+        
+        -- MOVE
+        createToggle(tabContents[4], "Fly", settings.flyOn, function(v) settings.flyOn = v end)
+        createToggle(tabContents[4], "Noclip", settings.noclipOn, function(v) settings.noclipOn = v end)
+        createToggle(tabContents[4], "Bunny Hop", settings.bhop, function(v) settings.bhop = v end)
+        createToggle(tabContents[4], "Infinite Jump", settings.infiniteJump, function(v) settings.infiniteJump = v end)
+        createToggle(tabContents[4], "Auto Sprint", settings.autoSprint, function(v) settings.autoSprint = v end)
+        createToggle(tabContents[4], "Slide", settings.slideOn, function(v) settings.slideOn = v end)
+        createToggle(tabContents[4], "Dash", settings.dashOn, function(v) settings.dashOn = v end)
+        
+        -- VISUAL
+        createToggle(tabContents[5], "Crosshair", settings.crosshairOn, function(v) settings.crosshairOn = v end)
+        createToggle(tabContents[5], "FOV Changer", settings.fovChanger, function(v) settings.fovChanger = v end)
+        createToggle(tabContents[5], "Brightness", settings.brightness, function(v) settings.brightness = v end)
+        createToggle(tabContents[5], "Fog", settings.fogOn, function(v) settings.fogOn = v end)
+        createToggle(tabContents[5], "Bloom", settings.bloom, function(v) settings.bloom = v end)
+        
+        -- EXTRA (NEW)
+        createToggle(tabContents[6], "Auto Collect", settings.autoCollectOn, function(v) settings.autoCollectOn = v end)
+        createToggle(tabContents[6], "Speed Hack", settings.speedHackOn, function(v) settings.speedHackOn = v end)
+        createToggle(tabContents[6], "Jump Hack", settings.jumpHackOn, function(v) settings.jumpHackOn = v end)
+        createToggle(tabContents[6], "NoClip Fly", settings.noClipFlyOn, function(v) settings.noClipFlyOn = v end)
+        createToggle(tabContents[6], "God Mode", settings.godModeOn, function(v) settings.godModeOn = v end)
+        createToggle(tabContents[6], "Invisibility", settings.invisOn, function(v) settings.invisOn = v end)
+        createToggle(tabContents[6], "Auto Farm", settings.autoFarmOn, function(v) settings.autoFarmOn = v end)
+        createToggle(tabContents[6], "Auto Click", settings.autoClickOn, function(v) settings.autoClickOn = v end)
     end
 
-    local ui = CreateObsidianUI()
-
-    print("Obsidian Black v22 запущен успешно.")
+    -- ============================================
+    -- ФУНКЦИОНАЛЬНОСТЬ
+    -- ============================================
+    
+    -- ESP
+    local function updateESP()
+        for _, obj in ipairs(espFolder:GetChildren()) do obj:Destroy() end
+        if not settings.espOn then return end
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= lp and player.Character and player.Character:FindFirstChild("Head") then
+                local highlight = Instance.new("Highlight")
+                highlight.Parent = espFolder
+                highlight.Adornee = player.Character
+                highlight.FillColor = Color3.fromRGB(180, 60, 255)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.5
+            end
+        end
+    end
+    
+    -- Aim
+    local function getClosestPlayer()
+        local closest = nil
+        local shortestDist = settings.radius
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= lp and player.Character and player.Character:FindFirstChild(settings.aimPart) then
+                local head = player.Character[settings.aimPart]
+                local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        closest = player
+                    end
+                end
+            end
+        end
+        return closest
+    end
+    
+    local function aimAt(targetPlayer)
+        if not targetPlayer or not targetPlayer.Character then return end
+        local head = targetPlayer.Character:FindFirstChild(settings.aimPart)
+        if not head then return end
+        local pos = head.Position
+        if settings.prediction and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local velocity = targetPlayer.Character.HumanoidRootPart.Velocity
+            pos = pos + velocity * 0.1
+        end
+        Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pos), settings.smooth)
+    end
+    
+    -- Fly
+    local function setupFly()
+        if settings.flyOn then
+            local char = lp.Character
+            if char and char:FindFirstChild("HumanoidRootPart") and not flyBody then
+                flyBody = Instance.new("BodyVelocity")
+                flyBody.Velocity = Vector3.new(0, 0, 0)
+                flyBody.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+                flyBody.Parent = char.HumanoidRootPart
+                local gyro = Instance.new("BodyGyro")
+                gyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+                gyro.CFrame = char.HumanoidRootPart.CFrame
+                gyro.Parent = char.HumanoidRootPart
+            end
+        else
+            if flyBody then
+                flyBody:Destroy()
+                flyBody = nil
+            end
+        end
+    end
+    
+    local function onInput(input)
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode == Enum.KeyCode.W and settings.flyOn and flyBody then
+                flyBody.Velocity = Camera.CFrame.LookVector * (settings.flySpeed * 50)
+            elseif input.KeyCode == Enum.KeyCode.S and settings.flyOn and flyBody then
+                flyBody.Velocity = -Camera.CFrame.LookVector * (settings.flySpeed * 50)
+            end
+        end
+    end
+    
+    UserInputService.InputBegan:Connect(onInput)
+    
+    -- Noclip
+    local function handleNoclip()
+        if settings.noclipOn then
+            for _, part in ipairs(lp.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+    end
+    
+    -- Speed / Jump hacks
+    local function applyMovementHacks()
+        local humanoid = lp.Character and lp.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = settings.speedHackOn and (16 * settings.speedHackMultiplier) or settings.speed
+            humanoid.JumpPower = settings.jumpHackOn and (50 * settings.jumpHackMultiplier) or settings.jump
+            humanoid.AutoRotate = not settings.autoSprint
+        end
+    end
+    
+    -- Main loop
+    local function onHeartbeat()
+        -- Aim
+        if settings.aimOn then
+            local closest = getClosestPlayer()
+            if closest then
+                aimAt(closest)
+            end
+        end
+        
+        -- ESP
+        updateESP()
+        
+        -- Noclip
+        if settings.noclipOn then
+            handleNoclip()
+        end
+        
+        -- Fly
+        if settings.flyOn and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            if not flyBody then setupFly() end
+        elseif not settings.flyOn and flyBody then
+            setupFly()
+        end
+        
+        -- Movement hacks
+        applyMovementHacks()
+        
+        -- God mode
+        if settings.godModeOn and lp.Character and lp.Character:FindFirstChild("Humanoid") then
+            lp.Character.Humanoid.Health = settings.godModeHealth
+        end
+        
+        -- Invisibility
+        if settings.invisOn and lp.Character then
+            for _, part in ipairs(lp.Character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Transparency < 1 then
+                    part.Transparency = settings.invisOpacity
+                end
+            end
+        end
+        
+        -- Auto collect / farm (simplified)
+        if settings.autoFarmOn then
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") and v.Name == "Coin" and (v.Position - lp.Character.HumanoidRootPart.Position).Magnitude < settings.autoFarmRange then
+                    firetouchinterest(lp.Character.HumanoidRootPart, v, 0)
+                    firetouchinterest(lp.Character.HumanoidRootPart, v, 1)
+                end
+            end
+        end
+    end
+    
+    -- Anti AFK
+    local function antiAFK()
+        if settings.antiAfk then
+            local vu = game:GetService("VirtualUser")
+            vu:CaptureController()
+            vu:ClickButton2(Vector2.new())
+        end
+    end
+    
+    RunService.Heartbeat:Connect(onHeartbeat)
+    task.spawn(function()
+        while task.wait(5) do antiAFK() end
+    end)
+    
+    -- Запуск UI
+    CreateObsidianUI()
 end
 
+-- ============================================
+-- ЗАПУСК СКРИПТА
+-- ============================================
 CreateKeyWindow()
