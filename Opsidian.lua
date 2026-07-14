@@ -537,21 +537,9 @@ function StartObsidianBlack()
         tc.CornerRadius = UDim.new(0, 14)
         tc.Parent = tabs
         
-        local tabNames = {"⚡ AIM", "🔥 FIRE", "🌈 ESP", "🏃 MOVE", "🎨 VISUAL", "⚙️ EXTRA"}
+        local tabNames = {"⚡ AIM", "🔥 FIRE", "🌈 ESP", "🏃 MOVE", "🎨 VISUAL", "⚙️ EXTRA", "📐 SIZE"}
         local tabButtons = {}
         local tabContents = {}
-        
-        local contentContainer = Instance.new("Frame")
-        contentContainer.Size = UDim2.new(1, -20, 1, -130)
-        contentContainer.Position = UDim2.new(0, 10, 0, 120)
-        contentContainer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        contentContainer.BackgroundTransparency = 0.15
-        contentContainer.BorderSizePixel = 1
-        contentContainer.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        contentContainer.Parent = main
-        local cc = Instance.new("UICorner")
-        cc.CornerRadius = UDim.new(0, 14)
-        cc.Parent = contentContainer
         
         for i, name in ipairs(tabNames) do
             local btn = Instance.new("TextButton")
@@ -570,165 +558,299 @@ function StartObsidianBlack()
             bc.Parent = btn
             tabButtons[i] = btn
             
+            -- Контент вкладки
             local content = Instance.new("ScrollingFrame")
-            content.Size = UDim2.new(1, -10, 1, -10)
-            content.Position = UDim2.new(0, 5, 0, 5)
+            content.Size = UDim2.new(1, -20, 1, -130)
+            content.Position = UDim2.new(0, 10, 0, 120)
             content.BackgroundTransparency = 1
+            content.BorderSizePixel = 0
             content.ScrollBarThickness = 4
             content.ScrollBarImageColor3 = Color3.fromRGB(180, 60, 255)
-            content.CanvasSize = UDim2.new(0, 0, 2, 0)
+            content.CanvasSize = UDim2.new(0, 0, 0, 0)
+            content.AutomaticCanvasSize = Enum.AutomaticSize.Y
             content.Visible = (i == 1)
-            content.Parent = contentContainer
+            content.Parent = main
+            local cl = Instance.new("UIListLayout")
+            cl.Padding = UDim.new(0, 6)
+            cl.Parent = content
             tabContents[i] = content
             
             btn.MouseButton1Click:Connect(function()
                 for j, b in ipairs(tabButtons) do
-                    b.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                    b.BackgroundTransparency = 0.6
-                    tabContents[j].Visible = false
+                    b.BackgroundColor3 = (j == i) and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(0, 0, 0)
+                    b.BackgroundTransparency = (j == i) and 0.2 or 0.6
+                    tabContents[j].Visible = (j == i)
                 end
-                btn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-                btn.BackgroundTransparency = 0.2
-                content.Visible = true
             end)
         end
         
+        -- ============================================
+        -- УНИВЕРСАЛЬНЫЙ TOGGLE
+        -- ============================================
+        local function CreateToggle(parent, text, settingKey)
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(1, -10, 0, 32)
+            frame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+            frame.BackgroundTransparency = 0.2
+            frame.BorderSizePixel = 1
+            frame.BorderColor3 = Color3.fromRGB(60, 30, 90)
+            frame.Parent = parent
+            local fc = Instance.new("UICorner")
+            fc.CornerRadius = UDim.new(0, 8)
+            fc.Parent = frame
+            
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(0.7, 0, 1, 0)
+            label.Position = UDim2.new(0.05, 0, 0, 0)
+            label.BackgroundTransparency = 1
+            label.Text = text
+            label.TextColor3 = Color3.fromRGB(230, 230, 255)
+            label.TextScaled = true
+            label.Font = Enum.Font.GothamBold
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Parent = frame
+            
+            local toggle = Instance.new("TextButton")
+            toggle.Size = UDim2.new(0, 50, 0, 22)
+            toggle.Position = UDim2.new(1, -60, 0.5, -11)
+            toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(40, 40, 40)
+            toggle.Text = settings[settingKey] and "ON" or "OFF"
+            toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            toggle.TextScaled = true
+            toggle.Font = Enum.Font.GothamBold
+            toggle.BorderSizePixel = 0
+            toggle.Parent = frame
+            local tgc = Instance.new("UICorner")
+            tgc.CornerRadius = UDim.new(0, 6)
+            tgc.Parent = toggle
+            
+            toggle.MouseButton1Click:Connect(function()
+                settings[settingKey] = not settings[settingKey]
+                toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(40, 40, 40)
+                toggle.Text = settings[settingKey] and "ON" or "OFF"
+            end)
+        end
+        
+        -- ============================================
+        -- УНИВЕРСАЛЬНЫЙ СЛАЙДЕР
+        -- ============================================
+        local function CreateSlider(parent, text, settingKey, min, max)
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(1, -10, 0, 50)
+            frame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+            frame.BackgroundTransparency = 0.2
+            frame.BorderSizePixel = 1
+            frame.BorderColor3 = Color3.fromRGB(60, 30, 90)
+            frame.Parent = parent
+            local fc = Instance.new("UICorner")
+            fc.CornerRadius = UDim.new(0, 8)
+            fc.Parent = frame
+            
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(0.7, 0, 0, 20)
+            label.Position = UDim2.new(0.05, 0, 0, 2)
+            label.BackgroundTransparency = 1
+            label.Text = text .. ": " .. tostring(settings[settingKey])
+            label.TextColor3 = Color3.fromRGB(230, 230, 255)
+            label.TextScaled = true
+            label.Font = Enum.Font.GothamBold
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Parent = frame
+            
+            local slider = Instance.new("TextButton")
+            slider.Size = UDim2.new(0.9, 0, 0, 20)
+            slider.Position = UDim2.new(0.05, 0, 0, 26)
+            slider.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            slider.Text = ""
+            slider.BorderSizePixel = 0
+            slider.Parent = frame
+            local slc = Instance.new("UICorner")
+            slc.CornerRadius = UDim.new(0, 6)
+            slc.Parent = slider
+            
+            local fill = Instance.new("Frame")
+            fill.Size = UDim2.new((settings[settingKey] - min) / (max - min), 0, 1, 0)
+            fill.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
+            fill.BorderSizePixel = 0
+            fill.Parent = slider
+            local fdc = Instance.new("UICorner")
+            fdc.CornerRadius = UDim.new(0, 6)
+            fdc.Parent = fill
+            
+            local dragging = false
+            local function update(input)
+                local rel = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
+                local val = min + (max - min) * rel
+                settings[settingKey] = val
+                fill.Size = UDim2.new(rel, 0, 1, 0)
+                label.Text = text .. ": " .. string.format("%.2f", val)
+            end
+            
+            slider.MouseButton1Down:Connect(function() dragging = true end)
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+            end)
+            UserInputService.InputChanged:Connect(function(input)
+                if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                    update(input)
+                end
+            end)
+        end
+        
+        -- ============================================
+        -- ЗАПОЛНЕНИЕ ВКЛАДОК
+        -- ============================================
+        -- AIM
+        CreateToggle(tabContents[1], "Aimbot", "aimOn")
+        CreateToggle(tabContents[1], "Silent Aim", "silentOn")
+        CreateToggle(tabContents[1], "Wall Check", "wallOn")
+        CreateToggle(tabContents[1], "Aim Lock", "aimLock")
+        CreateToggle(tabContents[1], "Prediction", "prediction")
+        CreateToggle(tabContents[1], "Visible Check", "visibleCheck")
+        CreateSlider(tabContents[1], "Radius", "radius", 50, 500)
+        CreateSlider(tabContents[1], "Smooth", "smooth", 0.01, 1)
+        CreateSlider(tabContents[1], "FOV", "fov", 30, 360)
+        
+        -- FIRE
+        CreateToggle(tabContents[2], "Fire Rate", "fireOn")
+        CreateToggle(tabContents[2], "Trigger Bot", "triggerBot")
+        CreateToggle(tabContents[2], "Burst Fire", "burstFire")
+        CreateToggle(tabContents[2], "Kill Aura", "killAuraOn")
+        CreateToggle(tabContents[2], "Anti AFK", "antiAfk")
+        CreateSlider(tabContents[2], "Fire Rate", "fireRate", 0.01, 1)
+        CreateSlider(tabContents[2], "Burst Count", "burstCount", 1, 10)
+        CreateSlider(tabContents[2], "Kill Aura Range", "killAuraRange", 5, 100)
+        
+        -- ESP
+        CreateToggle(tabContents[3], "ESP", "espOn")
+        CreateToggle(tabContents[3], "Health", "showHealth")
+        CreateToggle(tabContents[3], "Name", "showName")
+        CreateToggle(tabContents[3], "Distance", "showDistance")
+        CreateToggle(tabContents[3], "Glow", "glowOn")
+        CreateToggle(tabContents[3], "Tracer", "tracer")
+        CreateToggle(tabContents[3], "Skeleton", "skeleton")
+        CreateToggle(tabContents[3], "Box Filled", "boxFilled")
+        
+        -- MOVE
+        CreateToggle(tabContents[4], "Fly", "flyOn")
+        CreateToggle(tabContents[4], "Noclip", "noclipOn")
+        CreateToggle(tabContents[4], "BHop", "bhop")
+        CreateToggle(tabContents[4], "Infinite Jump", "infiniteJump")
+        CreateToggle(tabContents[4], "Auto Sprint", "autoSprint")
+        CreateToggle(tabContents[4], "Anti Stun", "antiStun")
+        CreateToggle(tabContents[4], "No Fall", "noFall")
+        CreateToggle(tabContents[4], "Water Walk", "waterWalk")
+        CreateToggle(tabContents[4], "Spider Man", "spiderMan")
+        CreateToggle(tabContents[4], "Air Jump", "airJump")
+        CreateToggle(tabContents[4], "Moon Jump", "moonJump")
+        CreateToggle(tabContents[4], "Slide", "slideOn")
+        CreateToggle(tabContents[4], "Dash", "dashOn")
+        CreateToggle(tabContents[4], "Teleport", "teleportOn")
+        CreateSlider(tabContents[4], "Speed", "speed", 16, 200)
+        CreateSlider(tabContents[4], "Jump Power", "jump", 50, 300)
+        CreateSlider(tabContents[4], "Fly Speed", "flySpeed", 1, 20)
+        CreateSlider(tabContents[4], "Moon Jump Power", "moonJumpPower", 100, 500)
+        CreateSlider(tabContents[4], "Slide Speed", "slideSpeed", 10, 100)
+        CreateSlider(tabContents[4], "Dash Distance", "dashDistance", 10, 100)
+        CreateSlider(tabContents[4], "Teleport Distance", "teleportDistance", 10, 200)
+        
+        -- VISUAL
+        CreateToggle(tabContents[5], "Crosshair", "crosshairOn")
+        CreateToggle(tabContents[5], "FOV Changer", "fovChanger")
+        CreateToggle(tabContents[5], "Brightness", "brightness")
+        CreateToggle(tabContents[5], "Fog", "fogOn")
+        CreateToggle(tabContents[5], "Bloom", "bloom")
+        CreateSlider(tabContents[5], "FOV Value", "fovValue", 30, 120)
+        CreateSlider(tabContents[5], "Brightness Value", "brightnessValue", 0.5, 3)
+        
+        -- EXTRA
+        CreateToggle(tabContents[6], "Auto Collect", "autoCollectOn")
+        CreateToggle(tabContents[6], "Speed Hack", "speedHackOn")
+        CreateToggle(tabContents[6], "Jump Hack", "jumpHackOn")
+        CreateToggle(tabContents[6], "NoClip Fly", "noClipFlyOn")
+        CreateToggle(tabContents[6], "God Mode", "godModeOn")
+        CreateToggle(tabContents[6], "Invisible", "invisOn")
+        CreateToggle(tabContents[6], "Auto Farm", "autoFarmOn")
+        CreateToggle(tabContents[6], "Auto Click", "autoClickOn")
+        CreateSlider(tabContents[6], "Auto Collect Range", "autoCollectRange", 10, 100)
+        CreateSlider(tabContents[6], "Auto Collect Delay", "autoCollectDelay", 0.1, 3)
+        CreateSlider(tabContents[6], "Speed Multiplier", "speedHackMultiplier", 1, 10)
+        CreateSlider(tabContents[6], "Jump Multiplier", "jumpHackMultiplier", 1, 10)
+        CreateSlider(tabContents[6], "NoClip Fly Speed", "noClipFlySpeed", 1, 50)
+        CreateSlider(tabContents[6], "God Mode Health", "godModeHealth", 100, 9999)
+        CreateSlider(tabContents[6], "Invis Opacity", "invisOpacity", 0.1, 1)
+        CreateSlider(tabContents[6], "Auto Farm Delay", "autoFarmDelay", 0.1, 5)
+        CreateSlider(tabContents[6], "Auto Farm Range", "autoFarmRange", 10, 200)
+        CreateSlider(tabContents[6], "Auto Click Delay", "autoClickDelay", 0.05, 1)
+        CreateSlider(tabContents[6], "Auto Click Range", "autoClickRange", 5, 100)
+        
+        -- SIZE
+        local sizeInfo = Instance.new("TextLabel")
+        sizeInfo.Size = UDim2.new(1, -10, 0, 60)
+        sizeInfo.BackgroundTransparency = 1
+        sizeInfo.Text = "Используй кнопки + и − вверху окна для изменения размера интерфейса.\n\nГорячие клавиши:\nRightShift — скрыть/показать\nR — аварийное закрытие"
+        sizeInfo.TextColor3 = Color3.fromRGB(220, 220, 255)
+        sizeInfo.TextScaled = true
+        sizeInfo.Font = Enum.Font.Gotham
+        sizeInfo.TextWrapped = true
+        sizeInfo.Parent = tabContents[7]
+        
+        -- ============================================
+        -- ОБРАБОТЧИКИ КНОПОК
+        -- ============================================
         closeBtn.MouseButton1Click:Connect(function()
             gui:Destroy()
         end)
         
-        -- Функция для создания переключателя
-        local function createToggle(parent, text, default, callback)
-            local toggle = Instance.new("Frame")
-            toggle.Size = UDim2.new(1, 0, 0, 35)
-            toggle.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-            toggle.BackgroundTransparency = 0.3
-            toggle.BorderSizePixel = 1
-            toggle.BorderColor3 = Color3.fromRGB(100, 50, 150)
-            toggle.Parent = parent
-            local tg = Instance.new("UICorner")
-            tg.CornerRadius = UDim.new(0, 8)
-            tg.Parent = toggle
-            
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0.7, 0, 1, 0)
-            label.BackgroundTransparency = 1
-            label.Text = text
-            label.TextColor3 = Color3.fromRGB(220, 220, 255)
-            label.TextScaled = true
-            label.Font = Enum.Font.Gotham
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Position = UDim2.new(0.05, 0, 0, 0)
-            label.Parent = toggle
-            
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(0.2, 0, 0.7, 0)
-            btn.Position = UDim2.new(0.75, 0, 0.15, 0)
-            btn.BackgroundColor3 = default and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(30, 30, 30)
-            btn.Text = default and "ON" or "OFF"
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.TextScaled = true
-            btn.Font = Enum.Font.GothamBold
-            btn.BorderSizePixel = 0
-            btn.Parent = toggle
-            local bc = Instance.new("UICorner")
-            bc.CornerRadius = UDim.new(0, 6)
-            bc.Parent = btn
-            
-            local isOn = default
-            btn.MouseButton1Click:Connect(function()
-                isOn = not isOn
-                btn.BackgroundColor3 = isOn and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(30, 30, 30)
-                btn.Text = isOn and "ON" or "OFF"
-                if callback then callback(isOn) end
-            end)
-            
-            return toggle
-        end
-        
-        -- Заполнение вкладок
-        -- AIM
-        createToggle(tabContents[1], "Aimbot", settings.aimOn, function(v) settings.aimOn = v end)
-        createToggle(tabContents[1], "Silent Aim", settings.silentOn, function(v) settings.silentOn = v end)
-        createToggle(tabContents[1], "Wall Check", settings.wallOn, function(v) settings.wallOn = v end)
-        createToggle(tabContents[1], "Aim Lock", settings.aimLock, function(v) settings.aimLock = v end)
-        createToggle(tabContents[1], "Prediction", settings.prediction, function(v) settings.prediction = v end)
-        createToggle(tabContents[1], "Visible Check", settings.visibleCheck, function(v) settings.visibleCheck = v end)
-        
-        -- FIRE
-        createToggle(tabContents[2], "Auto Fire", settings.fireOn, function(v) settings.fireOn = v end)
-        createToggle(tabContents[2], "Trigger Bot", settings.triggerBot, function(v) settings.triggerBot = v end)
-        createToggle(tabContents[2], "Burst Fire", settings.burstFire, function(v) settings.burstFire = v end)
-        createToggle(tabContents[2], "Kill Aura", settings.killAuraOn, function(v) settings.killAuraOn = v end)
-        createToggle(tabContents[2], "Anti AFK", settings.antiAfk, function(v) settings.antiAfk = v end)
-        
-        -- ESP
-        createToggle(tabContents[3], "ESP", settings.espOn, function(v) settings.espOn = v end)
-        createToggle(tabContents[3], "Health", settings.showHealth, function(v) settings.showHealth = v end)
-        createToggle(tabContents[3], "Name", settings.showName, function(v) settings.showName = v end)
-        createToggle(tabContents[3], "Distance", settings.showDistance, function(v) settings.showDistance = v end)
-        createToggle(tabContents[3], "Tracers", settings.tracer, function(v) settings.tracer = v end)
-        
-        -- MOVE
-        createToggle(tabContents[4], "Fly", settings.flyOn, function(v) settings.flyOn = v end)
-        createToggle(tabContents[4], "Noclip", settings.noclipOn, function(v) settings.noclipOn = v end)
-        createToggle(tabContents[4], "Bunny Hop", settings.bhop, function(v) settings.bhop = v end)
-        createToggle(tabContents[4], "Infinite Jump", settings.infiniteJump, function(v) settings.infiniteJump = v end)
-        createToggle(tabContents[4], "Auto Sprint", settings.autoSprint, function(v) settings.autoSprint = v end)
-        createToggle(tabContents[4], "Slide", settings.slideOn, function(v) settings.slideOn = v end)
-        createToggle(tabContents[4], "Dash", settings.dashOn, function(v) settings.dashOn = v end)
-        
-        -- VISUAL
-        createToggle(tabContents[5], "Crosshair", settings.crosshairOn, function(v) settings.crosshairOn = v end)
-        createToggle(tabContents[5], "FOV Changer", settings.fovChanger, function(v) settings.fovChanger = v end)
-        createToggle(tabContents[5], "Brightness", settings.brightness, function(v) settings.brightness = v end)
-        createToggle(tabContents[5], "Fog", settings.fogOn, function(v) settings.fogOn = v end)
-        createToggle(tabContents[5], "Bloom", settings.bloom, function(v) settings.bloom = v end)
-        
-        -- EXTRA (NEW)
-        createToggle(tabContents[6], "Auto Collect", settings.autoCollectOn, function(v) settings.autoCollectOn = v end)
-        createToggle(tabContents[6], "Speed Hack", settings.speedHackOn, function(v) settings.speedHackOn = v end)
-        createToggle(tabContents[6], "Jump Hack", settings.jumpHackOn, function(v) settings.jumpHackOn = v end)
-        createToggle(tabContents[6], "NoClip Fly", settings.noClipFlyOn, function(v) settings.noClipFlyOn = v end)
-        createToggle(tabContents[6], "God Mode", settings.godModeOn, function(v) settings.godModeOn = v end)
-        createToggle(tabContents[6], "Invisibility", settings.invisOn, function(v) settings.invisOn = v end)
-        createToggle(tabContents[6], "Auto Farm", settings.autoFarmOn, function(v) settings.autoFarmOn = v end)
-        createToggle(tabContents[6], "Auto Click", settings.autoClickOn, function(v) settings.autoClickOn = v end)
-    end
-
-    -- ============================================
-    -- ФУНКЦИОНАЛЬНОСТЬ
-    -- ============================================
-    
-    -- ESP
-    local function updateESP()
-        for _, obj in ipairs(espFolder:GetChildren()) do obj:Destroy() end
-        if not settings.espOn then return end
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= lp and player.Character and player.Character:FindFirstChild("Head") then
-                local highlight = Instance.new("Highlight")
-                highlight.Parent = espFolder
-                highlight.Adornee = player.Character
-                highlight.FillColor = Color3.fromRGB(180, 60, 255)
-                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                highlight.FillTransparency = 0.5
+        local minimized = false
+        toggleBtn.MouseButton1Click:Connect(function()
+            minimized = not minimized
+            if minimized then
+                main.Size = UDim2.new(0, 480 * uiSize, 0, 65)
+                toggleBtn.Text = "+"
+            else
+                main.Size = UDim2.new(0, 480 * uiSize, 0, 640 * uiSize)
+                toggleBtn.Text = "−"
             end
-        end
+        end)
+        
+        return gui
     end
     
-    -- Aim
+    -- ============================================
+    -- ВОЗРОЖДЕНИЕ ИГРОКА
+    -- ============================================
+    local function getRoot()
+        local char = lp.Character
+        if not char then return nil end
+        return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
+    end
+    
+    local function getHumanoid()
+        local char = lp.Character
+        if not char then return nil end
+        return char:FindFirstChildOfClass("Humanoid")
+    end
+    
+    -- ============================================
+    -- ПОИСК ЦЕЛИ ДЛЯ AIM
+    -- ============================================
     local function getClosestPlayer()
         local closest = nil
-        local shortestDist = settings.radius
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= lp and player.Character and player.Character:FindFirstChild(settings.aimPart) then
-                local head = player.Character[settings.aimPart]
-                local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
-                if onScreen then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                    if dist < shortestDist then
-                        shortestDist = dist
-                        closest = player
+        local shortest = settings.radius
+        local mousePos = UserInputService:GetMouseLocation()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local part = p.Character:FindFirstChild(settings.aimPart) or p.Character:FindFirstChild("HumanoidRootPart")
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                if part and hum and hum.Health > 0 then
+                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                        if dist < shortest then
+                            shortest = dist
+                            closest = p
+                        end
                     end
                 end
             end
@@ -736,143 +858,225 @@ function StartObsidianBlack()
         return closest
     end
     
-    local function aimAt(targetPlayer)
-        if not targetPlayer or not targetPlayer.Character then return end
-        local head = targetPlayer.Character:FindFirstChild(settings.aimPart)
-        if not head then return end
-        local pos = head.Position
-        if settings.prediction and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local velocity = targetPlayer.Character.HumanoidRootPart.Velocity
-            pos = pos + velocity * 0.1
+    -- ============================================
+    -- ESP СИСТЕМА
+    -- ============================================
+    local espObjects = {}
+    
+    local colorMap = {
+        Violet = Color3.fromRGB(180, 60, 255),
+        Red = Color3.fromRGB(255, 50, 50),
+        Green = Color3.fromRGB(0, 255, 100),
+        Blue = Color3.fromRGB(50, 150, 255),
+        White = Color3.fromRGB(255, 255, 255),
+    }
+    
+    local function clearESP()
+        for _, obj in pairs(espObjects) do
+            if obj and obj.Parent then obj:Destroy() end
         end
-        Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pos), settings.smooth)
+        espObjects = {}
     end
     
-    -- Fly
-    local function setupFly()
-        if settings.flyOn then
-            local char = lp.Character
-            if char and char:FindFirstChild("HumanoidRootPart") and not flyBody then
-                flyBody = Instance.new("BodyVelocity")
-                flyBody.Velocity = Vector3.new(0, 0, 0)
-                flyBody.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                flyBody.Parent = char.HumanoidRootPart
-                local gyro = Instance.new("BodyGyro")
-                gyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-                gyro.CFrame = char.HumanoidRootPart.CFrame
-                gyro.Parent = char.HumanoidRootPart
-            end
-        else
-            if flyBody then
-                flyBody:Destroy()
-                flyBody = nil
-            end
-        end
-    end
-    
-    local function onInput(input)
-        if input.UserInputType == Enum.UserInputType.Keyboard then
-            if input.KeyCode == Enum.KeyCode.W and settings.flyOn and flyBody then
-                flyBody.Velocity = Camera.CFrame.LookVector * (settings.flySpeed * 50)
-            elseif input.KeyCode == Enum.KeyCode.S and settings.flyOn and flyBody then
-                flyBody.Velocity = -Camera.CFrame.LookVector * (settings.flySpeed * 50)
-            end
-        end
-    end
-    
-    UserInputService.InputBegan:Connect(onInput)
-    
-    -- Noclip
-    local function handleNoclip()
-        if settings.noclipOn then
-            for _, part in ipairs(lp.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end
-    end
-    
-    -- Speed / Jump hacks
-    local function applyMovementHacks()
-        local humanoid = lp.Character and lp.Character:FindFirstChild("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = settings.speedHackOn and (16 * settings.speedHackMultiplier) or settings.speed
-            humanoid.JumpPower = settings.jumpHackOn and (50 * settings.jumpHackMultiplier) or settings.jump
-            humanoid.AutoRotate = not settings.autoSprint
-        end
-    end
-    
-    -- Main loop
-    local function onHeartbeat()
-        -- Aim
-        if settings.aimOn then
-            local closest = getClosestPlayer()
-            if closest then
-                aimAt(closest)
-            end
-        end
-        
-        -- ESP
-        updateESP()
-        
-        -- Noclip
-        if settings.noclipOn then
-            handleNoclip()
-        end
-        
-        -- Fly
-        if settings.flyOn and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-            if not flyBody then setupFly() end
-        elseif not settings.flyOn and flyBody then
-            setupFly()
-        end
-        
-        -- Movement hacks
-        applyMovementHacks()
-        
-        -- God mode
-        if settings.godModeOn and lp.Character and lp.Character:FindFirstChild("Humanoid") then
-            lp.Character.Humanoid.Health = settings.godModeHealth
-        end
-        
-        -- Invisibility
-        if settings.invisOn and lp.Character then
-            for _, part in ipairs(lp.Character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Transparency < 1 then
-                    part.Transparency = settings.invisOpacity
-                end
-            end
-        end
-        
-        -- Auto collect / farm (simplified)
-        if settings.autoFarmOn then
-            for _, v in ipairs(workspace:GetDescendants()) do
-                if v:IsA("BasePart") and v.Name == "Coin" and (v.Position - lp.Character.HumanoidRootPart.Position).Magnitude < settings.autoFarmRange then
-                    firetouchinterest(lp.Character.HumanoidRootPart, v, 0)
-                    firetouchinterest(lp.Character.HumanoidRootPart, v, 1)
+    local function updateESP()
+        clearESP()
+        if not settings.espOn then return end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                if hum and root and hum.Health > 0 then
+                    if settings.espType == "Highlight" then
+                        local hl = Instance.new("Highlight")
+                        hl.Parent = espFolder
+                        hl.Adornee = p.Character
+                        hl.FillColor = colorMap[settings.espColor] or colorMap.Violet
+                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        hl.FillTransparency = 0.5
+                        hl.OutlineTransparency = 0
+                        espObjects[p] = hl
+                    end
                 end
             end
         end
     end
     
-    -- Anti AFK
-    local function antiAFK()
+    if not espFolder.Parent then
+        espFolder.Parent = workspace
+    end
+    
+    -- ============================================
+    -- ПРИЦЕЛ
+    -- ============================================
+    local function createCrosshair()
+        if crosshair then crosshair:Destroy() end
+        local gui = Instance.new("ScreenGui")
+        gui.Parent = lp:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
+        gui.Name = "ObsidianCrosshair"
+        gui.ResetOnSpawn = false
+        crosshair = gui
+        
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 4, 0, 4)
+        dot.Position = UDim2.new(0.5, -2, 0.5, -2)
+        dot.BackgroundColor3 = colorMap[settings.crosshairColor] or colorMap.Violet
+        dot.BorderSizePixel = 0
+        dot.Parent = gui
+        local dc = Instance.new("UICorner")
+        dc.CornerRadius = UDim.new(1, 0)
+        dc.Parent = dot
+    end
+    createCrosshair()
+    
+    -- ============================================
+    -- ГЛАВНЫЙ ЦИКЛ
+    -- ============================================
+    local function mainLoop()
+        RunService.RenderStepped:Connect(function()
+            -- AIM
+            if settings.aimOn then
+                local t = getClosestPlayer()
+                if t and t.Character then
+                    local part = t.Character:FindFirstChild(settings.aimPart) or t.Character:FindFirstChild("Head")
+                    if part then
+                        local targetPos = part.Position
+                        if settings.prediction then
+                            local vel = part.AssemblyLinearVelocity
+                            targetPos = targetPos + vel * 0.1
+                        end
+                        local currentCF = Camera.CFrame
+                        local targetCF = CFrame.new(currentCF.Position, targetPos)
+                        Camera.CFrame = currentCF:Lerp(targetCF, settings.smooth)
+                    end
+                end
+            end
+            
+            -- SPEED / JUMP
+            local hum = getHumanoid()
+            if hum then
+                if settings.speedHackOn then
+                    hum.WalkSpeed = settings.speed * settings.speedHackMultiplier
+                else
+                    hum.WalkSpeed = settings.speed
+                end
+                if settings.jumpHackOn then
+                    hum.JumpPower = settings.jump * settings.jumpHackMultiplier
+                else
+                    hum.JumpPower = settings.jump
+                end
+            end
+            
+            -- NOCLIP
+            if settings.noclipOn then
+                local char = lp.Character
+                if char then
+                    for _, p in ipairs(char:GetDescendants()) do
+                        if p:IsA("BasePart") and p.CanCollide then
+                            p.CanCollide = false
+                        end
+                    end
+                end
+            end
+            
+            -- FLY
+            if settings.flyOn then
+                local root = getRoot()
+                if root then
+                    if not flyBody then
+                        flyBody = Instance.new("BodyVelocity")
+                        flyBody.Parent = root
+                    end
+                    local dir = Vector3.zero
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
+                    flyBody.Velocity = dir * settings.flySpeed * 50
+                end
+            else
+                if flyBody then flyBody:Destroy() flyBody = nil end
+            end
+            
+            -- FOV
+            if settings.fovChanger then
+                Camera.FieldOfView = settings.fovValue
+            end
+            
+            -- BRIGHTNESS
+            if settings.brightness then
+                Lighting.Brightness = settings.brightnessValue
+            end
+            
+            -- CROSSHAIR
+            if crosshair then
+                crosshair.Enabled = settings.crosshairOn
+            end
+        end)
+        
+        -- ESP LOOP (медленнее)
+        task.spawn(function()
+            while task.wait(0.5) do
+                updateESP()
+            end
+        end)
+        
+        -- AUTO FARM / AUTO CLICK / AUTO COLLECT LOOP
+        task.spawn(function()
+            while task.wait(0.2) do
+                local root = getRoot()
+                if not root then else
+                    -- Auto Click
+                    if settings.autoClickOn then
+                        -- простая авто-клик реализация через mouse click эмуляцию (если поддерживается executor)
+                        pcall(function()
+                            if mouse1press then
+                                mouse1press()
+                                task.wait(settings.autoClickDelay)
+                                mouse1release()
+                            end
+                        end)
+                    end
+                end
+            end
+        end)
+    end
+    
+    -- ============================================
+    -- ВВОД
+    -- ============================================
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            local gui = lp:FindFirstChild("PlayerGui") and lp.PlayerGui:FindFirstChild("ObsidianBlack")
+            if gui then gui.Enabled = not gui.Enabled end
+        elseif input.KeyCode == Enum.KeyCode.R then
+            local gui = lp:FindFirstChild("PlayerGui") and lp.PlayerGui:FindFirstChild("ObsidianBlack")
+            if gui then gui:Destroy() end
+        elseif settings.infiniteJump and input.KeyCode == Enum.KeyCode.Space then
+            local hum = getHumanoid()
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end
+    end)
+    
+    -- ============================================
+    -- ANTI AFK
+    -- ============================================
+    local vu = game:GetService("VirtualUser")
+    lp.Idled:Connect(function()
         if settings.antiAfk then
-            local vu = game:GetService("VirtualUser")
             vu:CaptureController()
             vu:ClickButton2(Vector2.new())
         end
-    end
-    
-    RunService.Heartbeat:Connect(onHeartbeat)
-    task.spawn(function()
-        while task.wait(5) do antiAFK() end
     end)
     
-    -- Запуск UI
+    -- ============================================
+    -- ЗАПУСК
+    -- ============================================
     CreateObsidianUI()
+    mainLoop()
 end
 
 -- ============================================
--- ЗАПУСК СКРИПТА
+-- СТАРТ
 -- ============================================
 CreateKeyWindow()
