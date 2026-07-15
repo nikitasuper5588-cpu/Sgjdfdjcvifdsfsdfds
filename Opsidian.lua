@@ -1,79 +1,78 @@
 -- ============================================
--- BAKE OR DIE  ::  AFK AUTO-FARM (NIGHTS + BOSSES + SKIP)
--- Версия: 1.0
--- Полностью автономный: kill zombies → kill boss → skip night → repeat
--- После убийства всех известных боссов — переходит в режим pure-skip
+-- BAKE OR DIE :: AFK AUTO-FARM v2.0
+-- Полностью безопасный: GOD MODE + NOCLIP + пошаговая логика
 -- ============================================
 --
--- КАК ЭТО РАБОТАЕТ:
---   1. На старте скрипт СКАНИРУЕТ workspace/ReplicatedStorage
---      и находит папку с врагами, RemoteEvents атаки/скипа ночи.
---   2. Каждую ночь: бежит к ближайшему зомби, бьёт его (tool activate
---      + RemoteEvent damage), собирает трупы в Shredder.
---   3. Отслеживает убитых боссов по имени.
---   4. Когда все известные боссы убиты → переключается в режим
---      PURE-SKIP: сразу скипает ночь за ночью.
---   5. Анти-AFK + авто-поднятие персонажа при застревании.
---
--- ВЫЗОВ: просто запусти этот скрипт в executor'е.
--- Горячие клавиши:
---   RightShift — вкл/выкл UI
---   F6         — экстренная остановка
+-- ЧТО ИЗМЕНИЛОСЬ vs v1.0:
+--   1. GOD MODE — здоровье всегда максимум, нельзя умереть
+--   2. NOCLIP — проходим сквозь стены/объекты
+--   3. НЕ БЕЖИТ сразу к врагам — ждёт пока игра будет готова
+--   4. Поэтапная логика:
+--      [WAIT] ждём завершения туториала/появления UI игры
+--      [DAY]  днём ничего не делаем, ждём ночь
+--      [NIGHT] ночью farmим зомби в безопасном радиусе
+--      [SKIP]  когда все враги мертвы — скипаем к след. ночи
+--   5. БОЛЬШОЙ радиус атаки — бьём врагов на расстоянии через remotes
+--      (НЕ подходим вплотную — не умираем)
+--   6. Авто-определение туториала и его завершения
 -- ============================================
 
 -- ============================================
 -- КОНФИГ
 -- ============================================
 local CONFIG = {
-    -- Известные имена боссов (по lower-case подстроке).
-    -- Когда ВСЕ из этого списка будут убиты — переключаемся в pure-skip.
-    KNOWN_BOSSES = {
-        "cake",       -- Cake Boss / Apple Cake Boss
-        "chicken",    -- Chicken Boss
-        "biggie",     -- Biggie Cheese Boss
-        "doomberry",  -- Doomberry (финальный)
-    },
+    -- ===== БЕЗОПАСНОСТЬ =====
+    GOD_MODE          = true,   -- бесконечное здоровье
+    NOCLIP            = true,   -- проходим сквозь стены
+    SAFE_DISTANCE     = 9999,   -- не приближаемся к врагам (бьём издалека)
 
-    -- Порог HP, выше которого враг считается боссом (авто-детекция).
+    -- ===== БОССЫ =====
+    KNOWN_BOSSES = {
+        "cake", "chicken", "biggie", "doomberry",
+        "apple", "banana", "boss",  -- общие ключи
+    },
     BOSS_HP_THRESHOLD = 1000,
 
-    -- Радиус поиска врагов вокруг игрока
-    COMBAT_RADIUS = 250,
+    -- ===== БОЙ =====
+    COMBAT_RADIUS     = 1000,   -- ищем врагов в большом радиусе
+    ATTACK_COOLDOWN   = 0.05,   -- 20 атак в секунду
+    LOOP_DELAY        = 0.1,    -- основной цикл
+    AUTO_EQUIP_WEAPON = true,   -- экипировать первый попавшийся Tool
 
-    -- Радиус "близко" — если враг ближе, бить вместо перемещения
-    ATTACK_RANGE = 12,
+    -- ===== СКИП =====
+    SKIP_CHECK_INTERVAL = 2,    -- как часто проверять кнопку скипа
+    PURE_SKIP_AFTER_ALL_BOSSES = true,  -- после всех боссов только скипать
 
-    -- Скорость перемещения к врагу (BodyVelocity)
-    TRAVEL_SPEED = 80,
+    -- ===== ТУТОРИАЛ =====
+    -- Скрипт ждёт пока исчезнут эти UI-элементы (или не появятся - в зависимости от логики)
+    TUTORIAL_UI_NAMES = {
+        "tutorial", "Tutorial", "Tutor",
+        "IntroText", "introtext", "intro",
+        "Hint", "hint",
+        "Dialog", "dialog",
+        "MessageBox", "InfoText",
+        "QuestTracker", "ObjectiveText",
+    },
+    -- Если туториал не найден — ждать хотя бы N секунд перед стартом
+    MIN_WAIT_BEFORE_START = 5,
 
-    -- Частота основного цикла
-    LOOP_DELAY = 0.2,
-
-    -- Задержка между атаками (для tool cooldown)
-    ATTACK_COOLDOWN = 0.15,
-
-    -- Авто-подбирание трупов? (true = относить в Shredder)
-    AUTO_SHRED = true,
-    SHREDDER_SEARCH_NAMES = { "Shredder", "shredder", "Grinder", "Disposal" },
-    SHREDDER_RANGE = 8,
-
-    -- Анти-AFK
+    -- ===== АНТИ-AFK =====
     ANTI_AFK = true,
 
-    -- Включить отладочные логи в консоли executor'а
+    -- ===== ЛОГИ =====
     DEBUG = true,
 }
 
 -- ============================================
 -- СЕРВИСЫ
 -- ============================================
-local Players            = game:GetService("Players")
-local RunService         = game:GetService("RunService")
-local UserInputService   = game:GetService("UserInputService")
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
-local Workspace          = game:GetService("Workspace")
-local VirtualUser        = game:GetService("VirtualUser")
-local TweenService       = game:GetService("TweenService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace         = game:GetService("Workspace")
+local VirtualUser       = game:GetService("VirtualUser")
+local StarterGui        = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -96,36 +95,131 @@ end
 -- ============================================
 local State = {
     running          = true,
-    pureSkipMode     = false,        -- true = все боссы убиты, только скипаем
-    killedBosses     = {},           -- [bossNameLower] = true
-    enemyFolder      = nil,          -- обнаруженная папка с врагами
-    attackRemotes    = {},           -- список RemoteEvent для атаки
-    skipRemotes      = {},           -- список RemoteEvent для скипа ночи
-    nightStateValue  = nil,          -- ObjectValue/IntValue: день/ночь
-    equippedTool     = nil,
-    lastAttack       = 0,
-    shredderPart     = nil,
+    phase            = "INIT",  -- INIT, WAIT_TUTORIAL, DAY, NIGHT, SKIP, PURE_SKIP
+    pureSkipMode     = false,
+    killedBosses     = {},
+    enemyFolder      = nil,
+    attackRemotes    = {},
+    skipRemotes      = {},
+    nightStateValue  = nil,
     ui               = nil,
     statusText       = nil,
+    phaseLabel       = nil,
+    lastAttack       = 0,
+    lastSkipCheck    = 0,
+    noclipConn       = nil,
+    godModeConn      = nil,
+    startTime        = tick(),
+    -- Статистика
+    stats = {
+        zombiesKilled = 0,
+        bossesKilled  = 0,
+        nightsSkipped = 0,
+        attacksFired  = 0,
+    },
 }
 
 -- ============================================
--- HELPER: найти root персонажа
+-- HELPER: персонаж
 -- ============================================
+local function getChar()
+    return LocalPlayer.Character
+end
+
 local function getRoot()
-    local char = LocalPlayer.Character
+    local char = getChar()
     if not char then return nil end
     return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
 end
 
 local function getHumanoid()
-    local char = LocalPlayer.Character
+    local char = getChar()
     if not char then return nil end
     return char:FindFirstChildOfClass("Humanoid")
 end
 
 -- ============================================
--- DETECTION: рекурсивный поиск RemoteEvents / RemoteFunctions
+-- GOD MODE
+-- ============================================
+local function enableGodMode()
+    if not CONFIG.GOD_MODE then return end
+
+    local function applyGodMode()
+        local hum = getHumanoid()
+        if not hum then return end
+        -- Бесконечное здоровье
+        if hum.MaxHealth < 1e9 then
+            hum.MaxHealth = 1e9
+        end
+        if hum.Health < hum.MaxHealth then
+            hum.Health = hum.MaxHealth
+        end
+        -- Запретить смерть через ChangeState
+        pcall(function()
+            hum.BreakJointsOnDeath = false
+        end)
+    end
+
+    -- Применять каждый кадр
+    State.godModeConn = RunService.Heartbeat:Connect(function()
+        pcall(applyGodMode)
+    end)
+
+    -- Также перехватить установки здоровья через :GetPropertyChangedSignal
+    pcall(function()
+        local hum = getHumanoid()
+        if hum then
+            hum.HealthChanged:Connect(function(health)
+                if health < hum.MaxHealth then
+                    hum.Health = hum.MaxHealth
+                end
+            end)
+        end
+    end)
+
+    -- Ловить смерть и мгновенно восстановить
+    pcall(function()
+        local hum = getHumanoid()
+        if hum then
+            hum.Died:Connect(function()
+                warnLog("Персонаж умер — god mode не сработал! Попытка восстановить...")
+                task.wait(0.1)
+                LocalPlayer:LoadCharacter()
+            end)
+        end
+    end)
+
+    log("GOD MODE активирован")
+end
+
+-- ============================================
+-- NOCLIP — проходим сквозь всё
+-- ============================================
+local function enableNoclip()
+    if not CONFIG.NOCLIP then return end
+
+    State.noclipConn = RunService.Stepped:Connect(function()
+        local char = getChar()
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end)
+
+    log("NOCLIP активирован")
+end
+
+local function disableNoclip()
+    if State.noclipConn then
+        State.noclipConn:Disconnect()
+        State.noclipConn = nil
+    end
+end
+
+-- ============================================
+-- DETECTION: рекурсивный поиск RemoteEvents
 -- ============================================
 local function scanForRemotes(parent, depth, results, maxDepth)
     depth = depth or 0
@@ -142,47 +236,42 @@ local function scanForRemotes(parent, depth, results, maxDepth)
 end
 
 -- ============================================
--- DETECTION: найти папку с врагами в Workspace
+-- DETECTION: найти папку врагов
 -- ============================================
 local function findEnemyFolder()
-    -- Список возможных имён папок с врагами
     local candidates = {
         "Enemies", "Zombies", "Mobs", "NPCs", "Monster", "Monsters",
         "Hostiles", "Ai", "AI", "Units", "Creatures", "Spawns", "Spawned",
     }
-    -- 1) По имени в workspace
     for _, name in ipairs(candidates) do
         local f = Workspace:FindFirstChild(name, true)
         if f then
-            -- Проверим, что внутри есть Humanoid'ы
             for _, desc in ipairs(f:GetDescendants()) do
                 if desc:IsA("Humanoid") then
-                    log("Найдена папка врагов: " .. f:GetFullName())
+                    log("Папка врагов: " .. f:GetFullName())
                     return f
                 end
             end
         end
     end
-    -- 2) Альтернатива: ищем Model в Workspace, у которых есть Humanoid и имя не как у игрока
-    log("Прямая папка не найдена — буду искать врагов прямо в Workspace")
+    log("Папка врагов не найдена — буду сканировать workspace напрямую")
     return Workspace
 end
 
 -- ============================================
--- DETECTION: классифицировать RemoteEvents по имени
+-- DETECTION: классификация remotes
 -- ============================================
 local function classifyRemotes(remotes)
     local attackNames = {
         "attack", "fire", "shoot", "damage", "hit", "swing", "weapon",
-        "punch", "stab", "slash", "shootgun", "fireweapon", "useitem",
+        "punch", "stab", "slash", "useitem", "killed", "kill",
     }
     local skipNames = {
         "skipnight", "skipday", "votenight", "voteskip", "startnight",
-        "skip", "fastnight", "endnight", "skipdaynight",
+        "skip", "fastnight", "endnight", "skipdaynight", "nextnight",
     }
     for _, r in ipairs(remotes) do
         local name = string.lower(r.Name)
-        -- Attack?
         for _, key in ipairs(attackNames) do
             if string.find(name, key, 1, true) then
                 table.insert(State.attackRemotes, r)
@@ -190,7 +279,6 @@ local function classifyRemotes(remotes)
                 break
             end
         end
-        -- Skip?
         for _, key in ipairs(skipNames) do
             if string.find(name, key, 1, true) then
                 table.insert(State.skipRemotes, r)
@@ -202,63 +290,122 @@ local function classifyRemotes(remotes)
 end
 
 -- ============================================
--- DETECTION: найти значение состояния день/ночь
+-- DETECTION: состояние день/ночь
 -- ============================================
 local function findNightStateValue()
-    -- Ищем IntValue/BoolValue/StringValue с именами типа "IsNight", "Night", "Phase"
     local candidates = { "IsNight", "Night", "Phase", "GamePhase", "TimeOfDay",
-                         "DayNight", "IsDay", "CurrentWave", "Wave" }
+                         "DayNight", "IsDay", "CurrentWave", "Wave", "GameState" }
     for _, name in ipairs(candidates) do
         local v = ReplicatedStorage:FindFirstChild(name, true)
         if v and v:IsA("ValueBase") then
-            log("Найдено состояние: " .. v:GetFullName() .. " = " .. tostring(v.Value))
+            log("Состояние игры: " .. v:GetFullName() .. " = " .. tostring(v.Value))
             return v
         end
         v = Workspace:FindFirstChild(name, true)
         if v and v:IsA("ValueBase") then
-            log("Найдено состояние (ws): " .. v:GetFullName() .. " = " .. tostring(v.Value))
+            log("Состояние игры (ws): " .. v:GetFullName() .. " = " .. tostring(v.Value))
             return v
         end
     end
     return nil
 end
 
+local function isNight()
+    if not State.nightStateValue then return nil end -- неизвестно
+    local v = State.nightStateValue.Value
+    if typeof(v) == "boolean" then
+        -- Если это IsNight/IsDay — определяем по имени
+        local name = string.lower(State.nightStateValue.Name)
+        if string.find(name, "isnight") or string.find(name, "night") then
+            return v == true
+        end
+        if string.find(name, "isday") or string.find(name, "day") then
+            return v == false
+        end
+    elseif typeof(v) == "string" then
+        local s = string.lower(v)
+        if string.find(s, "night") then return true end
+        if string.find(s, "day") then return false end
+        if string.find(s, "wave") or string.find(s, "combat") or string.find(s, "fight") then
+            return true
+        end
+    elseif typeof(v) == "number" then
+        -- Инкрементальное значение — сложно сказать
+        return nil
+    end
+    return nil
+end
+
 -- ============================================
--- DETECTION: найти Shredder
+-- DETECTION: туториал (ищем UI элементы)
 -- ============================================
-local function findShredder()
-    for _, name in ipairs(CONFIG.SHREDDER_SEARCH_NAMES) do
-        local obj = Workspace:FindFirstChild(name, true)
-        if obj and obj:IsA("Model") then
-            -- Найти BasePart внутри
-            local part = obj:FindFirstChildWhichIsA("BasePart", true)
-            if part then
-                log("Найден Shredder: " .. obj:GetFullName())
-                return part
+local function findTutorialUI()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, name in ipairs(CONFIG.TUTORIAL_UI_NAMES) do
+                local el = gui:FindFirstChild(name, true)
+                if el and el:IsA("TextLabel") and el.Visible then
+                    -- Проверим что есть реальный текст
+                    if el.Text and #el.Text > 5 then
+                        return el
+                    end
+                end
             end
-        elseif obj and obj:IsA("BasePart") then
-            log("Найден Shredder (part): " .. obj:GetFullName())
-            return obj
+        end
+    end
+    return nil
+end
+
+local function isTutorialActive()
+    return findTutorialUI() ~= nil
+end
+
+-- ============================================
+-- DETECTION: кнопка Skip
+-- ============================================
+local function findSkipButton()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, desc in ipairs(gui:GetDescendants()) do
+                if (desc:IsA("TextButton") or desc:IsA("ImageButton")) and desc.Visible then
+                    local name = string.lower(desc.Name)
+                    local text = ""
+                    pcall(function() text = desc.Text and string.lower(desc.Text) or "" end)
+                    if string.find(name, "skip", 1, true)
+                       or string.find(text, "skip", 1, true)
+                       or string.find(text, "vote", 1, true)
+                       or string.find(text, "next", 1, true)
+                       or string.find(name, "vote", 1, true)
+                       or string.find(name, "next", 1, true)
+                       or string.find(text, "start night", 1, true) then
+                        return desc
+                    end
+                end
+            end
         end
     end
     return nil
 end
 
 -- ============================================
--- СТАТУС ВРАГА: получить Humanoid и Root из model
+-- ВРАГИ: данные
 -- ============================================
 local function getEnemyData(model)
     if not model or not model.Parent then return nil end
     local hum = model:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return nil end
-    local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChildWhichIsA("BasePart")
+    local root = model:FindFirstChild("HumanoidRootPart")
+              or model:FindFirstChild("Torso")
+              or model:FindFirstChild("UpperTorso")
+              or model:FindFirstChildWhichIsA("BasePart")
     if not root then return nil end
     return { model = model, humanoid = hum, root = root }
 end
 
--- ============================================
--- ПРОВЕРКА: является ли враг боссом
--- ============================================
 local function isBossName(name)
     if not name then return false end
     local lower = string.lower(name)
@@ -274,9 +421,6 @@ local function isBossByHP(hum)
     return hum and hum.MaxHealth >= CONFIG.BOSS_HP_THRESHOLD
 end
 
--- ============================================
--- ПОЛУЧИТЬ СПИСОК ВСЕХ ЖИВЫХ ВРАГОВ
--- ============================================
 local function getAllEnemies()
     local enemies = {}
     local root = getRoot()
@@ -285,9 +429,7 @@ local function getAllEnemies()
     local function checkModel(model)
         local data = getEnemyData(model)
         if not data then return end
-        -- Исключить самого игрока
         if model == LocalPlayer.Character then return end
-        -- Проверить дистанцию
         local dist = (data.root.Position - root.Position).Magnitude
         if dist > CONFIG.COMBAT_RADIUS then return end
         data.distance = dist
@@ -304,10 +446,8 @@ local function getAllEnemies()
             if child:IsA("Model") then checkModel(child) end
         end
     else
-        -- Сканируем workspace
         for _, child in ipairs(Workspace:GetChildren()) do
             if child:IsA("Model") and child ~= LocalPlayer.Character then
-                -- Проверяем что у model есть Humanoid
                 if child:FindFirstChildOfClass("Humanoid") then
                     checkModel(child)
                 end
@@ -315,7 +455,7 @@ local function getAllEnemies()
         end
     end
 
-    -- Сортировка: боссы приоритетнее, затем ближайшие
+    -- Сортировка: боссы сначала, затем ближайшие
     table.sort(enemies, function(a, b)
         if a.isBoss and not b.isBoss then return true end
         if not a.isBoss and b.isBoss then return false end
@@ -325,81 +465,34 @@ local function getAllEnemies()
 end
 
 -- ============================================
--- ПЕРЕМЕЩЕНИЕ к цели (через CFrame для простоты и скорости)
--- ============================================
-local function travelTo(targetPos)
-    local root = getRoot()
-    local hum = getHumanoid()
-    if not root or not hum then return end
-
-    local dist = (targetPos - root.Position).Magnitude
-    if dist <= CONFIG.ATTACK_RANGE then return true end
-
-    -- BodyVelocity для плавного перемещения
-    local bv = root:FindFirstChild("__travel_bv")
-    if not bv then
-        bv = Instance.new("BodyVelocity")
-        bv.Name = "__travel_bv"
-        bv.MaxForce = Vector3.new(1, 0, 1) * 1e5
-        bv.Velocity = Vector3.zero
-        bv.Parent = root
-    end
-    local dir = (targetPos - root.Position)
-    dir = Vector3.new(dir.X, 0, dir.Z)  -- только горизонталь
-    if dir.Magnitude > 0.1 then
-        bv.Velocity = dir.Unit * CONFIG.TRAVEL_SPEED
-    end
-    return false
-end
-
-local function stopTravel()
-    local root = getRoot()
-    if not root then return end
-    local bv = root:FindFirstChild("__travel_bv")
-    if bv then bv:Destroy() end
-end
-
--- ============================================
--- ТЕЛЕПОРТ (мгновенный) - fallback если travel не работает
--- ============================================
-local function teleportTo(pos)
-    local root = getRoot()
-    if not root then return end
-    root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-end
-
--- ============================================
--- АТАКА: все доступные методы
+-- АТАКА (только через remotes — без приближения!)
 -- ============================================
 local function attackEnemy(enemy)
-    local root = getRoot()
-    if not root then return end
     local now = tick()
     if now - State.lastAttack < CONFIG.ATTACK_COOLDOWN then return end
     State.lastAttack = now
+    State.stats.attacksFired = State.stats.attacksFired + 1
 
-    -- 1. Активировать текущий tool (если есть)
+    -- 1. Активировать tool (если есть) — без перемещения к врагу!
     local char = LocalPlayer.Character
     if char then
         local tool = char:FindFirstChildOfClass("Tool")
         if tool then
             pcall(function() tool:Activate() end)
-            -- Подойти вплотную
-            local targetPos = enemy.root.Position
-            local dir = (targetPos - root.Position)
-            if dir.Magnitude > 0 then
-                root.CFrame = CFrame.new(targetPos + dir.Unit * 4, targetPos)
-            end
         end
     end
 
-    -- 2. Fire attack remotes
+    -- 2. Fire attack remotes (главный способ)
     for _, r in ipairs(State.attackRemotes) do
         pcall(function()
             if r:IsA("RemoteEvent") then
-                r:FireServer(enemy.model)
-                r:FireServer(enemy.root)
-                r:FireServer(enemy.humanoid)
+                -- Несколько вариантов аргументов — пробуем все
+                pcall(function() r:FireServer(enemy.model) end)
+                pcall(function() r:FireServer(enemy.root) end)
+                pcall(function() r:FireServer(enemy.humanoid) end)
+                pcall(function() r:FireServer(enemy.model, enemy.root) end)
+                pcall(function() r:FireServer(enemy.root.Position) end)
+                pcall(function() r:FireServer() end)
             elseif r:IsA("RemoteFunction") then
                 pcall(function() r:InvokeServer(enemy.model) end)
                 pcall(function() r:InvokeServer(enemy.root) end)
@@ -407,19 +500,19 @@ local function attackEnemy(enemy)
         end)
     end
 
-    -- 3. Прямая попытка убить (работает в некоторых executor'ах через __namecall)
+    -- 3. Попытка прямого урона через executor (если поддерживается)
     pcall(function()
         if enemy.humanoid and enemy.humanoid.Health > 0 then
             enemy.humanoid.Health = 0
         end
     end)
 
-    -- 4. Touch с handle инструмента (для melee)
+    -- 4. Touch handle инструмента (бессмертный melee через noclip)
     if char then
         local tool = char:FindFirstChildOfClass("Tool")
         if tool then
             local handle = tool:FindFirstChild("Handle")
-            if handle and enemy.root then
+            if handle and enemy.root and firetouchinterest then
                 pcall(function()
                     firetouchinterest(handle, enemy.root, 0)
                     firetouchinterest(handle, enemy.root, 1)
@@ -430,57 +523,52 @@ local function attackEnemy(enemy)
 end
 
 -- ============================================
--- СКИП НОЧИ / СКИП ДНЯ
+-- СКИП НОЧИ
 -- ============================================
 local function trySkipNight()
-    if #State.skipRemotes == 0 then return false end
+    local fired = false
     for _, r in ipairs(State.skipRemotes) do
         pcall(function()
             if r:IsA("RemoteEvent") then
                 r:FireServer()
+                fired = true
             elseif r:IsA("RemoteFunction") then
                 pcall(function() r:InvokeServer() end)
+                fired = true
             end
         end)
     end
-    log("Skip-night вызван (" .. #State.skipRemotes .. " remotes)")
-    return true
-end
-
--- ============================================
--- ПОИСК КНОПКИ SKIP в PlayerGui
--- ============================================
-local function findSkipButton()
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    for _, gui in ipairs(pg:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Enabled then
-            for _, desc in ipairs(gui:GetDescendants()) do
-                if desc:IsA("TextButton") or desc:IsA("ImageButton") then
-                    local name = string.lower(desc.Name)
-                    local text = desc.Text and string.lower(desc.Text) or ""
-                    if string.find(name, "skip", 1, true)
-                       or string.find(text, "skip", 1, true)
-                       or string.find(text, "vote", 1, true)
-                       or string.find(text, "next", 1, true)
-                       or string.find(name, "vote", 1, true)
-                       or string.find(name, "next", 1, true) then
-                        if desc.Visible ~= false and desc.Active ~= false then
-                            return desc
-                        end
-                    end
-                end
+    -- Кнопка в UI
+    local btn = findSkipButton()
+    if btn then
+        pcall(function()
+            if firesignal then
+                firesignal(btn.MouseButton1Click)
             end
-        end
+            -- Прямой вызов через MouseButton1Click:Fire
+            if btn.MouseButton1Click and btn.MouseButton1Click.Fire then
+                btn.MouseButton1Click:Fire()
+            end
+        end)
+        fired = true
     end
-    return nil
+    if fired then
+        State.stats.nightsSkipped = State.stats.nightsSkipped + 1
+        log("Skip выполнен (#" .. State.stats.nightsSkipped .. ")")
+    end
+    return fired
 end
 
 -- ============================================
--- ПРОВЕРКА: все ли боссы убиты?
+-- ПРОВЕРКА: все ли боссы убиты
 -- ============================================
 local function allBossesKilled()
-    for _, key in ipairs(CONFIG.KNOWN_BOSSES) do
+    -- Если у нас вообще нет информации о боссах — не переключаемся
+    -- (считаем что есть). Минимум 1 должен быть убит
+    if State.stats.bossesKilled == 0 then return false end
+    -- Проверяем только основных 4
+    local mainBosses = { "cake", "chicken", "biggie", "doomberry" }
+    for _, key in ipairs(mainBosses) do
         if not State.killedBosses[key] then
             return false
         end
@@ -489,7 +577,7 @@ local function allBossesKilled()
 end
 
 -- ============================================
--- UI: простая понель статуса
+-- UI
 -- ============================================
 local function createUI()
     local gui = Instance.new("ScreenGui")
@@ -500,8 +588,8 @@ local function createUI()
     gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 280, 0, 140)
-    frame.Position = UDim2.new(1, -300, 0, 20)
+    frame.Size = UDim2.new(0, 300, 0, 160)
+    frame.Position = UDim2.new(1, -320, 0, 20)
     frame.BackgroundColor3 = Color3.fromRGB(15, 5, 25)
     frame.BackgroundTransparency = 0.05
     frame.BorderSizePixel = 0
@@ -515,17 +603,28 @@ local function createUI()
     s.Parent = frame
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 28)
+    title.Size = UDim2.new(1, 0, 0, 24)
     title.BackgroundTransparency = 1
-    title.Text = "BAKE OR DIE :: AFK FARM"
+    title.Text = "BAKE OR DIE :: AFK FARM v2"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.Font = Enum.Font.GothamBold
     title.Parent = frame
 
+    State.phaseLabel = Instance.new("TextLabel")
+    State.phaseLabel.Size = UDim2.new(1, -20, 0, 22)
+    State.phaseLabel.Position = UDim2.new(0, 10, 0, 26)
+    State.phaseLabel.BackgroundTransparency = 1
+    State.phaseLabel.Text = "ФАЗА: INIT"
+    State.phaseLabel.TextColor3 = Color3.fromRGB(180, 60, 255)
+    State.phaseLabel.TextScaled = true
+    State.phaseLabel.Font = Enum.Font.GothamBold
+    State.phaseLabel.TextXAlignment = Enum.TextXAlignment.Left
+    State.phaseLabel.Parent = frame
+
     State.statusText = Instance.new("TextLabel")
-    State.statusText.Size = UDim2.new(1, -20, 0, 90)
-    State.statusText.Position = UDim2.new(0, 10, 0, 32)
+    State.statusText.Size = UDim2.new(1, -20, 0, 108)
+    State.statusText.Position = UDim2.new(0, 10, 0, 50)
     State.statusText.BackgroundTransparency = 1
     State.statusText.Text = "Инициализация..."
     State.statusText.TextColor3 = Color3.fromRGB(220, 220, 255)
@@ -539,34 +638,72 @@ local function createUI()
     return gui
 end
 
+local function setPhase(phase)
+    State.phase = phase
+    if State.phaseLabel then
+        State.phaseLabel.Text = "ФАЗА: " .. phase
+    end
+    log(">>> ФАЗА: " .. phase)
+end
+
 local function updateStatus(text)
     if State.statusText then
-        State.statusText.Text = text
+        local stats = string.format(
+            "З: %d | Б: %d | Скип: %d\n",
+            State.stats.zombiesKilled,
+            State.stats.bossesKilled,
+            State.stats.nightsSkipped
+        )
+        State.statusText.Text = stats .. text
     end
     log(text)
 end
 
 -- ============================================
--- ПОДГОТОВКА ПЕРСОНАЖА
+-- АВТО-ЭКИПИРОВКА ОРУЖИЯ
 -- ============================================
-local function setupCharacter()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hum = char:WaitForChild("Humanoid")
-    -- Увеличить WalkSpeed на всякий случай
-    hum.WalkSpeed = math.max(hum.WalkSpeed, 32)
-    -- Auto-equip первый tool из Backpack
+local function equipBestWeapon()
+    if not CONFIG.AUTO_EQUIP_WEAPON then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    -- Уже что-то экипировано?
+    local current = char:FindFirstChildOfClass("Tool")
+    if current then return end
+
     local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        local tool = backpack:FindFirstChildOfClass("Tool")
-        if tool then
-            hum:EquipTool(tool)
-            log("Экипирован инструмент: " .. tool.Name)
-        end
+    if not backpack then return end
+
+    -- Найти первый Tool
+    local tool = backpack:FindFirstChildOfClass("Tool")
+    if tool then
+        hum:EquipTool(tool)
+        log("Экипирован: " .. tool.Name)
     end
 end
 
+local function setupAutoEquip()
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                task.wait(0.5)
+                equipBestWeapon()
+            end
+        end)
+    end
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        enableGodMode()
+        enableNoclip()
+        equipBestWeapon()
+    end)
+end
+
 -- ============================================
--- ANTI-AFK
+-- АНТИ-AFK
 -- ============================================
 local function setupAntiAfk()
     LocalPlayer.Idled:Connect(function()
@@ -578,100 +715,22 @@ local function setupAntiAfk()
 end
 
 -- ============================================
--- ОСНОВНОЙ ЦИКЛ
+-- ПЕРИОДИЧЕСКИЙ RESCAN
 -- ============================================
-local function mainLoop()
-    while State.running do
-        local root = getRoot()
-        if root then
-            if State.pureSkipMode then
-                -- РЕЖИМ PURE SKIP
-                local skipBtn = findSkipButton()
-                if skipBtn then
-                    pcall(function()
-                        skipBtn.MouseButton1Click:Fire()
-                        -- Альтернатива: использовать firesignal
-                        if firesignal then firesignal(skipBtn.MouseButton1Click) end
-                    end)
-                end
-                trySkipNight()
-                updateStatus("РЕЖИМ PURE-SKIP\nВсе боссы убиты!\nСкипаем ночи...")
-                task.wait(2)
-            else
-                -- РЕЖИМ ФАРМА
-                local enemies = getAllEnemies()
-                if #enemies == 0 then
-                    -- Врагов нет — попытаться скипнуть ночь/дождаться ночи
-                    local skipBtn = findSkipButton()
-                    if skipBtn then
-                        pcall(function()
-                            if firesignal then firesignal(skipBtn.MouseButton1Click) end
-                        end)
-                    end
-                    trySkipNight()
-                    stopTravel()
-                    local killedList = ""
-                    for k, _ in pairs(State.killedBosses) do
-                        killedList = killedList .. k .. ", "
-                    end
-                    updateStatus("Ожидание врагов...\nУбито боссов: " .. killedList)
-                    task.wait(1)
-                else
-                    -- Ближайший враг (приоритет босс)
-                    local target = enemies[1]
-                    local dist = target.distance
-
-                    -- Запомнить босса
-                    if target.isBoss and target.bossKey then
-                        -- Бьём до смерти, потом отметим
-                    end
-
-                    if dist <= CONFIG.ATTACK_RANGE then
-                        stopTravel()
-                        attackEnemy(target)
-                        updateStatus(string.format(
-                            "АТАКА: %s%s\nHP: %d/%d\nДист: %d",
-                            target.model.Name,
-                            target.isBoss and " [BOSS]" or "",
-                            math.floor(target.humanoid.Health),
-                            math.floor(target.humanoid.MaxHealth),
-                            math.floor(dist)
-                        ))
-                    else
-                        travelTo(target.root.Position)
-                        updateStatus(string.format(
-                            "Иду к: %s%s\nДист: %d",
-                            target.model.Name,
-                            target.isBoss and " [BOSS]" or "",
-                            math.floor(dist)
-                        ))
-                    end
-
-                    -- Проверка — если враг умер, отметить босса
-                    if target.humanoid.Health <= 0 and target.isBoss and target.bossKey then
-                        if not State.killedBosses[target.bossKey] then
-                            State.killedBosses[target.bossKey] = true
-                            log("★ БОСС УБИТ: " .. target.model.Name .. " (key=" .. target.bossKey .. ")")
-                            -- Проверить, все ли убиты
-                            if allBossesKilled() then
-                                State.pureSkipMode = true
-                                log("★ ВСЕ БОССЫ УБИТЫ — переключение в PURE-SKIP режим")
-                            end
-                        end
-                    end
-
-                    task.wait(CONFIG.LOOP_DELAY)
-                end
+local function setupRescanLoop()
+    task.spawn(function()
+        while State.running do
+            task.wait(30)
+            -- Перепроверить состояние игры
+            if not State.nightStateValue or not State.nightStateValue.Parent then
+                State.nightStateValue = findNightStateValue()
             end
-        else
-            updateStatus("Жду персонажа...")
-            task.wait(1)
         end
-    end
+    end)
 end
 
 -- ============================================
--- ВВОД: горячие клавиши
+-- ВВОД
 -- ============================================
 local function setupInput()
     UserInputService.InputBegan:Connect(function(input, gpe)
@@ -682,106 +741,169 @@ local function setupInput()
             end
         elseif input.KeyCode == Enum.KeyCode.F6 then
             State.running = false
-            stopTravel()
+            disableNoclip()
+            if State.godModeConn then
+                State.godModeConn:Disconnect()
+                State.godModeConn = nil
+            end
             if State.ui then State.ui:Destroy() end
-            warnLog("Скрипт остановлен пользователем (F6)")
+            warnLog("Скрипт остановлен (F6)")
         end
     end)
 end
 
 -- ============================================
--- АВТО-ЭКИПИРОВКА ПРИ ПОДНЯТИИ ОРУЖИЯ
+-- ОСНОВНОЙ ЦИКЛ — пошаговая логика
 -- ============================================
-local function setupAutoEquip()
-    LocalPlayer.CharacterAdded:Connect(function(char)
+local function mainLoop()
+    -- ===== ФАЗА 1: INIT — настроить персонажа =====
+    setPhase("INIT")
+    updateStatus("Настройка персонажа...")
+    enableGodMode()
+    enableNoclip()
+    equipBestWeapon()
+    setupAutoEquip()
+    setupAntiAfk()
+    setupRescanLoop()
+    setupInput()
+
+    -- ===== ФАЗа 2: WAIT_TUTORIAL — ждём завершения туториала =====
+    setPhase("WAIT_TUTORIAL")
+    local waited = 0
+    while State.running and waited < CONFIG.MIN_WAIT_BEFORE_START do
+        updateStatus(string.format("Ожидание %d/%d сек перед стартом...", waited, CONFIG.MIN_WAIT_BEFORE_START))
         task.wait(1)
-        setupCharacter()
-    end)
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        backpack.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") then
-                task.wait(0.3)
-                local hum = getHumanoid()
-                local equipped = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                if hum and not equipped then
-                    hum:EquipTool(child)
+        waited = waited + 1
+    end
+
+    -- Дополнительно ждём пока активен туториал (до 60 сек максимум)
+    local tutorialWait = 0
+    while State.running and isTutorialActive() and tutorialWait < 60 do
+        updateStatus(string.format("Жду завершения туториала... %d сек", tutorialWait))
+        task.wait(1)
+        tutorialWait = tutorialWait + 1
+    end
+
+    -- ===== ОСНОВНОЙ ЦИКЛ =====
+    while State.running do
+        local root = getRoot()
+        if not root then
+            updateStatus("Жду персонажа...")
+            task.wait(1)
+        else
+            local night = isNight()
+
+            if State.pureSkipMode then
+                -- ===== PURE SKIP — все боссы убиты =====
+                setPhase("PURE_SKIP")
+                local now = tick()
+                if now - State.lastSkipCheck > CONFIG.SKIP_CHECK_INTERVAL then
+                    State.lastSkipCheck = now
+                    trySkipNight()
+                end
+                updateStatus("Все боссы убиты!\nТолько скипаем ночи.")
+                task.wait(1)
+            elseif night == false then
+                -- ===== ДЕНЬ — ничего не делаем, ждём ночь =====
+                setPhase("DAY")
+                -- Попытаться скипнуть день
+                local now = tick()
+                if now - State.lastSkipCheck > CONFIG.SKIP_CHECK_INTERVAL then
+                    State.lastSkipCheck = now
+                    -- Кликнуть кнопку скипа если есть
+                    local btn = findSkipButton()
+                    if btn then
+                        pcall(function()
+                            if firesignal then firesignal(btn.MouseButton1Click) end
+                        end)
+                    end
+                    trySkipNight()
+                end
+                updateStatus("День. Жду ночь...\n(God mode + Noclip активны)")
+                task.wait(2)
+            else
+                -- ===== НОЧЬ (или неизвестно — treat as night) =====
+                setPhase("NIGHT")
+                local enemies = getAllEnemies()
+
+                if #enemies == 0 then
+                    -- Врагов нет — попытаться скипнуть
+                    setPhase("SKIP")
+                    local now = tick()
+                    if now - State.lastSkipCheck > CONFIG.SKIP_CHECK_INTERVAL then
+                        State.lastSkipCheck = now
+                        trySkipNight()
+                    end
+                    updateStatus("Врагов нет. Скип к след. ночи...")
+                    task.wait(1)
+                else
+                    -- Атакуем ближайшего/босса — БЕЗ ПРИБЛИЖЕНИЯ
+                    local target = enemies[1]
+
+                    -- Если враг умер — отметить
+                    if target.humanoid.Health <= 0 then
+                        if target.isBoss and target.bossKey then
+                            if not State.killedBosses[target.bossKey] then
+                                State.killedBosses[target.bossKey] = true
+                                State.stats.bossesKilled = State.stats.bossesKilled + 1
+                                log("★★ БОСС УБИТ: " .. target.model.Name .. " (key=" .. target.bossKey .. ")")
+                                if CONFIG.PURE_SKIP_AFTER_ALL_BOSSES and allBossesKilled() then
+                                    State.pureSkipMode = true
+                                    log("★★★ ВСЕ БОССЫ УБИТЫ — переход в PURE-SKIP")
+                                end
+                            end
+                        else
+                            State.stats.zombiesKilled = State.stats.zombiesKilled + 1
+                        end
+                    else
+                        -- Атакуем
+                        attackEnemy(target)
+                        updateStatus(string.format(
+                            "НОЧЬ: бой\nЦель: %s%s\nHP: %d/%d | Дист: %d",
+                            target.model.Name,
+                            target.isBoss and " [BOSS]" or "",
+                            math.floor(target.humanoid.Health),
+                            math.floor(target.humanoid.MaxHealth),
+                            math.floor(target.distance)
+                        ))
+                    end
+                    task.wait(CONFIG.LOOP_DELAY)
                 end
             end
-        end)
-    end
-end
-
--- ============================================
--- ПЕРИОДИЧЕСКОЕ ОБНОВЛЕНИЕ ССЫЛОК (раз в 30с)
--- ============================================
-local function setupRescanLoop()
-    task.spawn(function()
-        while State.running do
-            task.wait(30)
-            -- Обновить shredder
-            if not State.shredderPart or not State.shredderPart.Parent then
-                State.shredderPart = findShredder()
-            end
-            -- Обновить night state value
-            if not State.nightStateValue or not State.nightStateValue.Parent then
-                State.nightStateValue = findNightStateValue()
-            end
         end
-    end)
+    end
 end
 
 -- ============================================
 -- ИНИЦИАЛИЗАЦИЯ
 -- ============================================
 local function init()
-    log("=== BAKE OR DIE AUTO-FARM v1.0 ===")
+    log("=== BAKE OR DIE AUTO-FARM v2.0 ===")
+    log("БЕЗОПАСНЫЙ РЕЖИМ: GOD MODE + NOCLIP")
     log("Сканирую игру...")
 
-    -- 1. UI
     createUI()
 
-    -- 2. Найти папку врагов
+    -- Найти папку врагов
     State.enemyFolder = findEnemyFolder()
 
-    -- 3. Найти все RemoteEvents
+    -- Найти RemoteEvents
     local allRemotes = {}
     scanForRemotes(ReplicatedStorage, 0, allRemotes, 8)
     scanForRemotes(Workspace, 0, allRemotes, 3)
     log("Найдено RemoteEvent/Function: " .. #allRemotes)
     classifyRemotes(allRemotes)
 
-    -- 4. Найти состояние ночь/день
+    -- Состояние день/ночь
     State.nightStateValue = findNightStateValue()
 
-    -- 5. Найти Shredder
-    State.shredderPart = findShredder()
-
-    -- 6. Настроить персонажа
-    setupCharacter()
-
-    -- 7. Anti-AFK
-    setupAntiAfk()
-
-    -- 8. Auto-equip
-    setupAutoEquip()
-
-    -- 9. Rescan loop
-    setupRescanLoop()
-
-    -- 10. Input
-    setupInput()
-
-    -- 11. Отчёт
-    local bossList = table.concat(CONFIG.KNOWN_BOSSES, ", ")
-    log("Известные боссы: " .. bossList)
     log("Attack remotes: " .. #State.attackRemotes)
     log("Skip remotes: " .. #State.skipRemotes)
-    log("Shredder: " .. (State.shredderPart and "найден" or "не найден"))
-    log("Night state: " .. (State.nightStateValue and "найден" or "не найден"))
+    log("Night state value: " .. (State.nightStateValue and "найден" or "не найден"))
+    log("God mode: " .. (CONFIG.GOD_MODE and "ON" or "OFF"))
+    log("Noclip: " .. (CONFIG.NOCLIP and "ON" or "OFF"))
     log("Запуск основного цикла...")
 
-    -- 12. Старт
     mainLoop()
 end
 
