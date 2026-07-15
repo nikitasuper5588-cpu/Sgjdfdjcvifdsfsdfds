@@ -1,1082 +1,794 @@
 -- ============================================
--- OBSIDIAN BLACK - ULTIMATE DARK EDITION
--- Создатель: @execute_hub
--- Ключ: z
--- Версия: 22.0 (FULL BLACK + NEW FUNCTIONS)
+-- BAKE OR DIE  ::  AFK AUTO-FARM (NIGHTS + BOSSES + SKIP)
+-- Версия: 1.0
+-- Полностью автономный: kill zombies → kill boss → skip night → repeat
+-- После убийства всех известных боссов — переходит в режим pure-skip
+-- ============================================
+--
+-- КАК ЭТО РАБОТАЕТ:
+--   1. На старте скрипт СКАНИРУЕТ workspace/ReplicatedStorage
+--      и находит папку с врагами, RemoteEvents атаки/скипа ночи.
+--   2. Каждую ночь: бежит к ближайшему зомби, бьёт его (tool activate
+--      + RemoteEvent damage), собирает трупы в Shredder.
+--   3. Отслеживает убитых боссов по имени.
+--   4. Когда все известные боссы убиты → переключается в режим
+--      PURE-SKIP: сразу скипает ночь за ночью.
+--   5. Анти-AFK + авто-поднятие персонажа при застревании.
+--
+-- ВЫЗОВ: просто запусти этот скрипт в executor'е.
+-- Горячие клавиши:
+--   RightShift — вкл/выкл UI
+--   F6         — экстренная остановка
 -- ============================================
 
-local correctKey = "z"
-local keyAttempts = 0
+-- ============================================
+-- КОНФИГ
+-- ============================================
+local CONFIG = {
+    -- Известные имена боссов (по lower-case подстроке).
+    -- Когда ВСЕ из этого списка будут убиты — переключаемся в pure-skip.
+    KNOWN_BOSSES = {
+        "cake",       -- Cake Boss / Apple Cake Boss
+        "chicken",    -- Chicken Boss
+        "biggie",     -- Biggie Cheese Boss
+        "doomberry",  -- Doomberry (финальный)
+    },
+
+    -- Порог HP, выше которого враг считается боссом (авто-детекция).
+    BOSS_HP_THRESHOLD = 1000,
+
+    -- Радиус поиска врагов вокруг игрока
+    COMBAT_RADIUS = 250,
+
+    -- Радиус "близко" — если враг ближе, бить вместо перемещения
+    ATTACK_RANGE = 12,
+
+    -- Скорость перемещения к врагу (BodyVelocity)
+    TRAVEL_SPEED = 80,
+
+    -- Частота основного цикла
+    LOOP_DELAY = 0.2,
+
+    -- Задержка между атаками (для tool cooldown)
+    ATTACK_COOLDOWN = 0.15,
+
+    -- Авто-подбирание трупов? (true = относить в Shredder)
+    AUTO_SHRED = true,
+    SHREDDER_SEARCH_NAMES = { "Shredder", "shredder", "Grinder", "Disposal" },
+    SHREDDER_RANGE = 8,
+
+    -- Анти-AFK
+    ANTI_AFK = true,
+
+    -- Включить отладочные логи в консоли executor'а
+    DEBUG = true,
+}
 
 -- ============================================
--- ОКНО КЛЮЧА (ЧЕРНЫЙ)
+-- СЕРВИСЫ
 -- ============================================
-local function CreateKeyWindow()
-    local gui = Instance.new("ScreenGui")
-    gui.Parent = game:GetService("CoreGui")
-    gui.Name = "ObsidianKey"
-    gui.ResetOnSpawn = false
-    
-    local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    bg.BackgroundTransparency = 0.95
-    bg.Parent = gui
-    
-    -- ЗВЕЗДЫ (ЕДИНСТВЕННЫЙ СВЕТ)
-    for i = 1, 60 do
-        local star = Instance.new("Frame")
-        local size = 1 + math.random() * 2
-        star.Size = UDim2.new(0, size, 0, size)
-        star.Position = UDim2.new(math.random(), 0, math.random(), 0)
-        star.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        star.BackgroundTransparency = 0.2 + math.random() * 0.5
-        star.BorderSizePixel = 0
-        star.Parent = bg
-        local sc = Instance.new("UICorner")
-        sc.CornerRadius = UDim.new(0, size/2)
-        sc.Parent = star
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local Workspace          = game:GetService("Workspace")
+local VirtualUser        = game:GetService("VirtualUser")
+local TweenService       = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ============================================
+-- ЛОГГЕР
+-- ============================================
+local function log(msg)
+    if CONFIG.DEBUG then
+        print("[BoD-Farm] " .. tostring(msg))
     end
-    
-    local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 400, 0, 420)
-    main.Position = UDim2.new(0.5, -200, 0.5, -210)
-    main.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    main.BackgroundTransparency = 0.05
-    main.BorderSizePixel = 2
-    main.BorderColor3 = Color3.fromRGB(180, 60, 255)
-    main.ClipsDescendants = true
-    main.Parent = bg
-    
-    local mc = Instance.new("UICorner")
-    mc.CornerRadius = UDim.new(0, 20)
-    mc.Parent = main
-    
-    -- НЕОНОВАЯ ОБВОДКА
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.new(1, 0, 1, 0)
-    glow.BackgroundTransparency = 1
-    glow.BorderSizePixel = 2
-    glow.BorderColor3 = Color3.fromRGB(180, 60, 255)
-    glow.Parent = main
-    local gbc = Instance.new("UICorner")
-    gbc.CornerRadius = UDim.new(0, 20)
-    gbc.Parent = glow
-    
-    local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 55)
-    header.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-    header.BackgroundTransparency = 0.1
-    header.BorderSizePixel = 0
-    header.Parent = main
-    local hc = Instance.new("UICorner")
-    hc.CornerRadius = UDim.new(0, 20)
-    hc.Parent = header
-    
-    local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.new(0.4, 0, 1, 0)
-    logo.Position = UDim2.new(0.05, 0, 0, 0)
-    logo.BackgroundTransparency = 1
-    logo.Text = "OBSIDIAN"
-    logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-    logo.TextScaled = true
-    logo.Font = Enum.Font.GothamBold
-    logo.TextXAlignment = Enum.TextXAlignment.Left
-    logo.Parent = header
-    
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(0.3, 0, 0.35, 0)
-    sub.Position = UDim2.new(0.5, 0, 0.65, 0)
-    sub.BackgroundTransparency = 1
-    sub.Text = "BLACK v22"
-    sub.TextColor3 = Color3.fromRGB(200, 150, 255)
-    sub.TextScaled = true
-    sub.Font = Enum.Font.Gotham
-    sub.Parent = header
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Position = UDim2.new(0, 0, 0, 70)
-    title.BackgroundTransparency = 1
-    title.Text = "ВВЕДИТЕ КЛЮЧ"
-    title.TextColor3 = Color3.fromRGB(220, 220, 255)
-    title.TextScaled = true
-    title.Font = Enum.Font.GothamBold
-    title.Parent = main
-    
-    local input = Instance.new("TextBox")
-    input.Size = UDim2.new(0.6, 0, 0, 45)
-    input.Position = UDim2.new(0.2, 0, 0, 110)
-    input.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-    input.BorderSizePixel = 2
-    input.BorderColor3 = Color3.fromRGB(180, 60, 255)
-    input.Text = ""
-    input.TextColor3 = Color3.fromRGB(255, 255, 255)
-    input.TextScaled = true
-    input.Font = Enum.Font.GothamBold
-    input.PlaceholderText = "Ключ..."
-    input.PlaceholderColor3 = Color3.fromRGB(150, 120, 200)
-    input.Parent = main
-    local ic = Instance.new("UICorner")
-    ic.CornerRadius = UDim.new(0, 12)
-    ic.Parent = input
-    
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.35, 0, 0, 45)
-    btn.Position = UDim2.new(0.325, 0, 0, 180)
-    btn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-    btn.BackgroundTransparency = 0.15
-    btn.Text = "АКТИВИРОВАТЬ"
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextScaled = true
-    btn.Font = Enum.Font.GothamBold
-    btn.BorderSizePixel = 2
-    btn.BorderColor3 = Color3.fromRGB(180, 60, 255)
-    btn.Parent = main
-    local bc = Instance.new("UICorner")
-    bc.CornerRadius = UDim.new(0, 12)
-    bc.Parent = btn
-    
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1, 0, 0, 25)
-    status.Position = UDim2.new(0, 0, 0, 250)
-    status.BackgroundTransparency = 1
-    status.Text = "Введите ключ для активации"
-    status.TextColor3 = Color3.fromRGB(200, 200, 230)
-    status.TextScaled = true
-    status.Font = Enum.Font.Gotham
-    status.Parent = main
-    
-    local line = Instance.new("Frame")
-    line.Size = UDim2.new(0.4, 0, 0, 1)
-    line.Position = UDim2.new(0.3, 0, 0, 295)
-    line.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-    line.BackgroundTransparency = 0.3
-    line.Parent = main
-    
-    local footer = Instance.new("TextLabel")
-    footer.Size = UDim2.new(1, 0, 0, 25)
-    footer.Position = UDim2.new(0, 0, 0, 315)
-    footer.BackgroundTransparency = 1
-    footer.Text = "@execute_hub"
-    footer.TextColor3 = Color3.fromRGB(180, 60, 255)
-    footer.TextScaled = true
-    footer.Font = Enum.Font.Gotham
-    footer.Parent = main
-    
-    input:CaptureFocus()
-    
-    local function CheckKey()
-        local enteredKey = string.lower(input.Text)
-        if enteredKey == correctKey then
-            status.Text = "КЛЮЧ ПРИНЯТ! ЗАПУСК..."
-            status.TextColor3 = Color3.fromRGB(0, 255, 100)
-            btn.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
-            btn.BorderColor3 = Color3.fromRGB(0, 200, 80)
-            input.BorderColor3 = Color3.fromRGB(0, 200, 80)
-            task.wait(0.8)
-            gui:Destroy()
-            StartObsidianBlack()
-        else
-            keyAttempts = keyAttempts + 1
-            status.Text = "НЕВЕРНЫЙ КЛЮЧ! " .. keyAttempts .. "/5"
-            status.TextColor3 = Color3.fromRGB(255, 50, 50)
-            btn.BackgroundColor3 = Color3.fromRGB(200, 30, 30)
-            btn.BorderColor3 = Color3.fromRGB(200, 30, 30)
-            input.BorderColor3 = Color3.fromRGB(200, 30, 30)
-            
-            if keyAttempts >= 5 then
-                status.Text = "ДОСТУП ЗАБЛОКИРОВАН!"
-                status.TextColor3 = Color3.fromRGB(255, 0, 0)
-                btn.Visible = false
-                input.Visible = false
-                task.wait(2)
-                gui:Destroy()
-            end
-            
-            task.wait(0.5)
-            input.Text = ""
-            input:CaptureFocus()
-            status.Text = "Введите ключ для активации"
-            status.TextColor3 = Color3.fromRGB(200, 200, 230)
-            btn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-            btn.BorderColor3 = Color3.fromRGB(180, 60, 255)
-            input.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        end
-    end
-    
-    btn.MouseButton1Click:Connect(CheckKey)
-    input.FocusLost:Connect(function(enter) if enter then CheckKey() end end)
-    
-    return gui
+end
+
+local function warnLog(msg)
+    warn("[BoD-Farm] " .. tostring(msg))
 end
 
 -- ============================================
--- ОСНОВНОЙ СКРИПТ (ЧЕРНЫЙ ИНТЕРФЕЙС + НОВЫЕ ФУНКЦИИ)
+-- STATE
 -- ============================================
-function StartObsidianBlack()
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
-    local Lighting = game:GetService("Lighting")
-    local TweenService = game:GetService("TweenService")
-    local lp = Players.LocalPlayer
-    local Camera = workspace.CurrentCamera
+local State = {
+    running          = true,
+    pureSkipMode     = false,        -- true = все боссы убиты, только скипаем
+    killedBosses     = {},           -- [bossNameLower] = true
+    enemyFolder      = nil,          -- обнаруженная папка с врагами
+    attackRemotes    = {},           -- список RemoteEvent для атаки
+    skipRemotes      = {},           -- список RemoteEvent для скипа ночи
+    nightStateValue  = nil,          -- ObjectValue/IntValue: день/ночь
+    equippedTool     = nil,
+    lastAttack       = 0,
+    shredderPart     = nil,
+    ui               = nil,
+    statusText       = nil,
+}
 
-    -- ============================================
-    -- НАСТРОЙКИ (50+ ФУНКЦИЙ)
-    -- ============================================
-    local settings = {
-        -- AIM (10)
-        aimOn = true,
-        silentOn = false,
-        wallOn = false,
-        aimLock = false,
-        radius = 200,
-        smooth = 0.12,
-        fov = 180,
-        aimPart = "Head",
-        prediction = true,
-        visibleCheck = true,
-        
-        -- FIRE (8)
-        fireOn = false,
-        fireRate = 0.1,
-        triggerBot = false,
-        burstFire = false,
-        burstCount = 3,
-        killAuraOn = false,
-        killAuraRange = 20,
-        antiAfk = false,
-        
-        -- ESP (10)
-        espOn = true,
-        espType = "Highlight",
-        espColor = "Violet",
-        showHealth = true,
-        showName = true,
-        showDistance = true,
-        glowOn = false,
-        tracer = false,
-        skeleton = false,
-        boxFilled = false,
-        
-        -- MOVEMENT (15)
-        flyOn = false,
-        noclipOn = false,
-        speed = 16,
-        jump = 50,
-        flySpeed = 1,
-        bhop = false,
-        infiniteJump = false,
-        autoSprint = false,
-        antiStun = false,
-        noFall = false,
-        waterWalk = false,
-        spiderMan = false,
-        airJump = false,
-        moonJump = false,
-        moonJumpPower = 200,
-        slideOn = false,
-        slideSpeed = 30,
-        dashOn = false,
-        dashDistance = 30,
-        teleportOn = false,
-        teleportDistance = 50,
-        
-        -- VISUAL (8)
-        crosshairOn = true,
-        crosshairColor = "Violet",
-        crosshairStyle = "Dot",
-        fovChanger = false,
-        fovValue = 70,
-        brightness = false,
-        brightnessValue = 1.5,
-        fogOn = false,
-        bloom = false,
-        
-        -- NEW FUNCTIONS (10)
-        autoCollectOn = false,
-        autoCollectRange = 30,
-        autoCollectDelay = 0.5,
-        speedHackOn = false,
-        speedHackMultiplier = 2,
-        jumpHackOn = false,
-        jumpHackMultiplier = 2,
-        noClipFlyOn = false,
-        noClipFlySpeed = 10,
-        godModeOn = false,
-        godModeHealth = 100,
-        invisOn = false,
-        invisOpacity = 0.3,
-        autoFarmOn = false,
-        autoFarmDelay = 1,
-        autoFarmRange = 50,
-        autoClickOn = false,
-        autoClickDelay = 0.1,
-        autoClickRange = 20,
+-- ============================================
+-- HELPER: найти root персонажа
+-- ============================================
+local function getRoot()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
+end
+
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+-- ============================================
+-- DETECTION: рекурсивный поиск RemoteEvents / RemoteFunctions
+-- ============================================
+local function scanForRemotes(parent, depth, results, maxDepth)
+    depth = depth or 0
+    maxDepth = maxDepth or 6
+    if depth > maxDepth then return end
+    for _, child in ipairs(parent:GetChildren()) do
+        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+            table.insert(results, child)
+        end
+        if child:IsA("Folder") or child:IsA("ModuleScript") or child:IsA("Configuration") or child:IsA("ValueBase") then
+            scanForRemotes(child, depth + 1, results, maxDepth)
+        end
+    end
+end
+
+-- ============================================
+-- DETECTION: найти папку с врагами в Workspace
+-- ============================================
+local function findEnemyFolder()
+    -- Список возможных имён папок с врагами
+    local candidates = {
+        "Enemies", "Zombies", "Mobs", "NPCs", "Monster", "Monsters",
+        "Hostiles", "Ai", "AI", "Units", "Creatures", "Spawns", "Spawned",
     }
+    -- 1) По имени в workspace
+    for _, name in ipairs(candidates) do
+        local f = Workspace:FindFirstChild(name, true)
+        if f then
+            -- Проверим, что внутри есть Humanoid'ы
+            for _, desc in ipairs(f:GetDescendants()) do
+                if desc:IsA("Humanoid") then
+                    log("Найдена папка врагов: " .. f:GetFullName())
+                    return f
+                end
+            end
+        end
+    end
+    -- 2) Альтернатива: ищем Model в Workspace, у которых есть Humanoid и имя не как у игрока
+    log("Прямая папка не найдена — буду искать врагов прямо в Workspace")
+    return Workspace
+end
 
-    -- ============================================
-    -- ПЕРЕМЕННЫЕ
-    -- ============================================
-    local target = nil
-    local lastShot = 0
-    local flyBody = nil
-    local espFolder = Instance.new("Folder")
-    local crosshair = nil
-    local aimLockTarget = nil
-    local jumpCount = 0
-    local bloomEffect = nil
-    local uiSize = 1
-    local dashCooldown = 0
-    local lastTeleport = 0
-    local particles = {}
-
-    -- ============================================
-    -- ПОЛНОСТЬЮ ЧЕРНЫЙ UI (ВСЕ ЭЛЕМЕНТЫ ЧЕРНЫЕ)
-    -- ============================================
-    local function CreateObsidianUI()
-        local gui = Instance.new("ScreenGui")
-        gui.Parent = lp:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
-        gui.ResetOnSpawn = false
-        gui.Name = "ObsidianBlack"
-        
-        -- ОСНОВНОЕ ОКНО (ЧЕРНЫЙ ФОН)
-        local main = Instance.new("Frame")
-        main.Size = UDim2.new(0, 480, 0, 640)
-        main.Position = UDim2.new(0.5, -240, 0.02, 0)
-        main.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        main.BackgroundTransparency = 0.05
-        main.BorderSizePixel = 2
-        main.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        main.ClipsDescendants = true
-        main.Parent = gui
-        
-        local mc = Instance.new("UICorner")
-        mc.CornerRadius = UDim.new(0, 25)
-        mc.Parent = main
-        
-        -- ТЕНЬ (ЧЕРНАЯ)
-        local shadow = Instance.new("Frame")
-        shadow.Size = UDim2.new(1, 30, 1, 30)
-        shadow.Position = UDim2.new(0, -15, 0, -15)
-        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadow.BackgroundTransparency = 0.98
-        shadow.BorderSizePixel = 0
-        shadow.Parent = main
-        local sc = Instance.new("UICorner")
-        sc.CornerRadius = UDim.new(0, 25)
-        sc.Parent = shadow
-        
-        -- НЕОНОВАЯ ОБВОДКА
-        local glow = Instance.new("Frame")
-        glow.Size = UDim2.new(1, 0, 1, 0)
-        glow.BackgroundTransparency = 1
-        glow.BorderSizePixel = 2
-        glow.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        glow.Parent = main
-        local gbc = Instance.new("UICorner")
-        gbc.CornerRadius = UDim.new(0, 25)
-        gbc.Parent = glow
-        
-        -- УГЛЫ (НЕОНОВЫЕ)
-        for _, data in ipairs({{0,0,0},{1,0,90},{0,1,-90},{1,1,180}}) do
-            local corner = Instance.new("Frame")
-            corner.Size = UDim2.new(0, 35, 0, 35)
-            corner.Position = UDim2.new(data[1], -3, data[2], -3)
-            corner.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-            corner.BackgroundTransparency = 0.2
-            corner.BorderSizePixel = 0
-            corner.Rotation = data[3]
-            corner.Parent = main
-            local c = Instance.new("UICorner")
-            c.CornerRadius = UDim.new(0, 8)
-            c.Parent = corner
-        end
-        
-        -- ВЕРХНИЙ БАННЕР (ЧЕРНЫЙ С ФИОЛЕТОВЫМ)
-        local header = Instance.new("Frame")
-        header.Size = UDim2.new(1, 0, 0, 65)
-        header.BackgroundColor3 = Color3.fromRGB(5, 0, 15)
-        header.BackgroundTransparency = 0.1
-        header.BorderSizePixel = 0
-        header.Parent = main
-        local hc = Instance.new("UICorner")
-        hc.CornerRadius = UDim.new(0, 25)
-        hc.Parent = header
-        
-        local logo = Instance.new("TextLabel")
-        logo.Size = UDim2.new(0.35, 0, 1, 0)
-        logo.Position = UDim2.new(0.05, 0, 0, 0)
-        logo.BackgroundTransparency = 1
-        logo.Text = "OBSIDIAN"
-        logo.TextColor3 = Color3.fromRGB(255, 255, 255)
-        logo.TextScaled = true
-        logo.Font = Enum.Font.GothamBold
-        logo.TextXAlignment = Enum.TextXAlignment.Left
-        logo.Parent = header
-        
-        local version = Instance.new("TextLabel")
-        version.Size = UDim2.new(0.25, 0, 0.35, 0)
-        version.Position = UDim2.new(0.4, 0, 0.65, 0)
-        version.BackgroundTransparency = 1
-        version.Text = "BLACK v22"
-        version.TextColor3 = Color3.fromRGB(200, 150, 255)
-        version.TextScaled = true
-        version.Font = Enum.Font.Gotham
-        version.Parent = header
-        
-        -- КНОПКИ (ЧЕРНЫЕ)
-        local closeBtn = Instance.new("TextButton")
-        closeBtn.Size = UDim2.new(0.06, 0, 0.5, 0)
-        closeBtn.Position = UDim2.new(0.88, 0, 0.25, 0)
-        closeBtn.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
-        closeBtn.BackgroundTransparency = 0.15
-        closeBtn.Text = "✕"
-        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        closeBtn.TextScaled = true
-        closeBtn.Font = Enum.Font.GothamBold
-        closeBtn.BorderSizePixel = 0
-        closeBtn.Parent = header
-        local cb = Instance.new("UICorner")
-        cb.CornerRadius = UDim.new(0, 8)
-        cb.Parent = closeBtn
-        
-        local toggleBtn = Instance.new("TextButton")
-        toggleBtn.Size = UDim2.new(0.06, 0, 0.5, 0)
-        toggleBtn.Position = UDim2.new(0.8, 0, 0.25, 0)
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-        toggleBtn.BackgroundTransparency = 0.15
-        toggleBtn.Text = "−"
-        toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        toggleBtn.TextScaled = true
-        toggleBtn.Font = Enum.Font.GothamBold
-        toggleBtn.BorderSizePixel = 0
-        toggleBtn.Parent = header
-        local tb = Instance.new("UICorner")
-        tb.CornerRadius = UDim.new(0, 8)
-        tb.Parent = toggleBtn
-        
-        -- РАЗМЕР (ЧЕРНЫЙ)
-        local sizeFrame = Instance.new("Frame")
-        sizeFrame.Size = UDim2.new(0.18, 0, 0, 28)
-        sizeFrame.Position = UDim2.new(0.76, 0, 0.02, 0)
-        sizeFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-        sizeFrame.BackgroundTransparency = 0.1
-        sizeFrame.BorderSizePixel = 1
-        sizeFrame.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        sizeFrame.Parent = main
-        local sf = Instance.new("UICorner")
-        sf.CornerRadius = UDim.new(0, 8)
-        sf.Parent = sizeFrame
-        
-        local sizeLabel = Instance.new("TextLabel")
-        sizeLabel.Size = UDim2.new(0.3, 0, 1, 0)
-        sizeLabel.Position = UDim2.new(0.35, 0, 0, 0)
-        sizeLabel.BackgroundTransparency = 1
-        sizeLabel.Text = "100%"
-        sizeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        sizeLabel.TextScaled = true
-        sizeLabel.Font = Enum.Font.GothamBold
-        sizeLabel.Parent = sizeFrame
-        
-        local minusBtn = Instance.new("TextButton")
-        minusBtn.Size = UDim2.new(0.3, 0, 1, 0)
-        minusBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-        minusBtn.BackgroundTransparency = 0.2
-        minusBtn.Text = "−"
-        minusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        minusBtn.TextScaled = true
-        minusBtn.Font = Enum.Font.GothamBold
-        minusBtn.BorderSizePixel = 0
-        minusBtn.Parent = sizeFrame
-        local mb = Instance.new("UICorner")
-        mb.CornerRadius = UDim.new(0, 6)
-        mb.Parent = minusBtn
-        
-        local plusBtn = Instance.new("TextButton")
-        plusBtn.Size = UDim2.new(0.3, 0, 1, 0)
-        plusBtn.Position = UDim2.new(0.7, 0, 0, 0)
-        plusBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-        plusBtn.BackgroundTransparency = 0.2
-        plusBtn.Text = "+"
-        plusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        plusBtn.TextScaled = true
-        plusBtn.Font = Enum.Font.GothamBold
-        plusBtn.BorderSizePixel = 0
-        plusBtn.Parent = sizeFrame
-        local pb = Instance.new("UICorner")
-        pb.CornerRadius = UDim.new(0, 6)
-        pb.Parent = plusBtn
-        
-        minusBtn.MouseButton1Click:Connect(function()
-            uiSize = math.max(0.7, uiSize - 0.05)
-            main.Size = UDim2.new(0, 480 * uiSize, 0, 640 * uiSize)
-            main.Position = UDim2.new(0.5, -240 * uiSize, 0.02, 0)
-            sizeLabel.Text = math.floor(uiSize * 100) .. "%"
-        end)
-        
-        plusBtn.MouseButton1Click:Connect(function()
-            uiSize = math.min(1.5, uiSize + 0.05)
-            main.Size = UDim2.new(0, 480 * uiSize, 0, 640 * uiSize)
-            main.Position = UDim2.new(0.5, -240 * uiSize, 0.02, 0)
-            sizeLabel.Text = math.floor(uiSize * 100) .. "%"
-        end)
-        
-        -- ВКЛАДКИ (ЧЕРНЫЕ)
-        local tabs = Instance.new("Frame")
-        tabs.Size = UDim2.new(1, -20, 0, 40)
-        tabs.Position = UDim2.new(0, 10, 0, 72)
-        tabs.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        tabs.BackgroundTransparency = 0.5
-        tabs.BorderSizePixel = 1
-        tabs.BorderColor3 = Color3.fromRGB(180, 60, 255)
-        tabs.Parent = main
-        local tc = Instance.new("UICorner")
-        tc.CornerRadius = UDim.new(0, 14)
-        tc.Parent = tabs
-        
-        local tabNames = {"⚡ AIM", "🔥 FIRE", "🌈 ESP", "🏃 MOVE", "🎨 VISUAL", "⚙️ EXTRA", "📐 SIZE"}
-        local tabButtons = {}
-        local tabContents = {}
-        
-        for i, name in ipairs(tabNames) do
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1/#tabNames, -4, 1, -4)
-            btn.Position = UDim2.new((i-1)/#tabNames, 2, 0, 2)
-            btn.BackgroundColor3 = i == 1 and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(0, 0, 0)
-            btn.BackgroundTransparency = i == 1 and 0.2 or 0.6
-            btn.Text = name
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.TextScaled = true
-            btn.Font = Enum.Font.GothamBold
-            btn.BorderSizePixel = 0
-            btn.Parent = tabs
-            local bc = Instance.new("UICorner")
-            bc.CornerRadius = UDim.new(0, 8)
-            bc.Parent = btn
-            tabButtons[i] = btn
-            
-            -- Контент вкладки
-            local content = Instance.new("ScrollingFrame")
-            content.Size = UDim2.new(1, -20, 1, -130)
-            content.Position = UDim2.new(0, 10, 0, 120)
-            content.BackgroundTransparency = 1
-            content.BorderSizePixel = 0
-            content.ScrollBarThickness = 4
-            content.ScrollBarImageColor3 = Color3.fromRGB(180, 60, 255)
-            content.CanvasSize = UDim2.new(0, 0, 0, 0)
-            content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-            content.Visible = (i == 1)
-            content.Parent = main
-            local cl = Instance.new("UIListLayout")
-            cl.Padding = UDim.new(0, 6)
-            cl.Parent = content
-            tabContents[i] = content
-            
-            btn.MouseButton1Click:Connect(function()
-                for j, b in ipairs(tabButtons) do
-                    b.BackgroundColor3 = (j == i) and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(0, 0, 0)
-                    b.BackgroundTransparency = (j == i) and 0.2 or 0.6
-                    tabContents[j].Visible = (j == i)
-                end
-            end)
-        end
-        
-        -- ============================================
-        -- УНИВЕРСАЛЬНЫЙ TOGGLE
-        -- ============================================
-        local function CreateToggle(parent, text, settingKey)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1, -10, 0, 32)
-            frame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-            frame.BackgroundTransparency = 0.2
-            frame.BorderSizePixel = 1
-            frame.BorderColor3 = Color3.fromRGB(60, 30, 90)
-            frame.Parent = parent
-            local fc = Instance.new("UICorner")
-            fc.CornerRadius = UDim.new(0, 8)
-            fc.Parent = frame
-            
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0.7, 0, 1, 0)
-            label.Position = UDim2.new(0.05, 0, 0, 0)
-            label.BackgroundTransparency = 1
-            label.Text = text
-            label.TextColor3 = Color3.fromRGB(230, 230, 255)
-            label.TextScaled = true
-            label.Font = Enum.Font.GothamBold
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Parent = frame
-            
-            local toggle = Instance.new("TextButton")
-            toggle.Size = UDim2.new(0, 50, 0, 22)
-            toggle.Position = UDim2.new(1, -60, 0.5, -11)
-            toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(40, 40, 40)
-            toggle.Text = settings[settingKey] and "ON" or "OFF"
-            toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-            toggle.TextScaled = true
-            toggle.Font = Enum.Font.GothamBold
-            toggle.BorderSizePixel = 0
-            toggle.Parent = frame
-            local tgc = Instance.new("UICorner")
-            tgc.CornerRadius = UDim.new(0, 6)
-            tgc.Parent = toggle
-            
-            toggle.MouseButton1Click:Connect(function()
-                settings[settingKey] = not settings[settingKey]
-                toggle.BackgroundColor3 = settings[settingKey] and Color3.fromRGB(180, 60, 255) or Color3.fromRGB(40, 40, 40)
-                toggle.Text = settings[settingKey] and "ON" or "OFF"
-            end)
-        end
-        
-        -- ============================================
-        -- УНИВЕРСАЛЬНЫЙ СЛАЙДЕР
-        -- ============================================
-        local function CreateSlider(parent, text, settingKey, min, max)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1, -10, 0, 50)
-            frame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-            frame.BackgroundTransparency = 0.2
-            frame.BorderSizePixel = 1
-            frame.BorderColor3 = Color3.fromRGB(60, 30, 90)
-            frame.Parent = parent
-            local fc = Instance.new("UICorner")
-            fc.CornerRadius = UDim.new(0, 8)
-            fc.Parent = frame
-            
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0.7, 0, 0, 20)
-            label.Position = UDim2.new(0.05, 0, 0, 2)
-            label.BackgroundTransparency = 1
-            label.Text = text .. ": " .. tostring(settings[settingKey])
-            label.TextColor3 = Color3.fromRGB(230, 230, 255)
-            label.TextScaled = true
-            label.Font = Enum.Font.GothamBold
-            label.TextXAlignment = Enum.TextXAlignment.Left
-            label.Parent = frame
-            
-            local slider = Instance.new("TextButton")
-            slider.Size = UDim2.new(0.9, 0, 0, 20)
-            slider.Position = UDim2.new(0.05, 0, 0, 26)
-            slider.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-            slider.Text = ""
-            slider.BorderSizePixel = 0
-            slider.Parent = frame
-            local slc = Instance.new("UICorner")
-            slc.CornerRadius = UDim.new(0, 6)
-            slc.Parent = slider
-            
-            local fill = Instance.new("Frame")
-            fill.Size = UDim2.new((settings[settingKey] - min) / (max - min), 0, 1, 0)
-            fill.BackgroundColor3 = Color3.fromRGB(180, 60, 255)
-            fill.BorderSizePixel = 0
-            fill.Parent = slider
-            local fdc = Instance.new("UICorner")
-            fdc.CornerRadius = UDim.new(0, 6)
-            fdc.Parent = fill
-            
-            local dragging = false
-            local function update(input)
-                local rel = math.clamp((input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
-                local val = min + (max - min) * rel
-                settings[settingKey] = val
-                fill.Size = UDim2.new(rel, 0, 1, 0)
-                label.Text = text .. ": " .. string.format("%.2f", val)
-            end
-            
-            slider.MouseButton1Down:Connect(function() dragging = true end)
-            UserInputService.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-            end)
-            UserInputService.InputChanged:Connect(function(input)
-                if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    update(input)
-                end
-            end)
-        end
-        
-        -- ============================================
-        -- ЗАПОЛНЕНИЕ ВКЛАДОК
-        -- ============================================
-        -- AIM
-        CreateToggle(tabContents[1], "Aimbot", "aimOn")
-        CreateToggle(tabContents[1], "Silent Aim", "silentOn")
-        CreateToggle(tabContents[1], "Wall Check", "wallOn")
-        CreateToggle(tabContents[1], "Aim Lock", "aimLock")
-        CreateToggle(tabContents[1], "Prediction", "prediction")
-        CreateToggle(tabContents[1], "Visible Check", "visibleCheck")
-        CreateSlider(tabContents[1], "Radius", "radius", 50, 500)
-        CreateSlider(tabContents[1], "Smooth", "smooth", 0.01, 1)
-        CreateSlider(tabContents[1], "FOV", "fov", 30, 360)
-        
-        -- FIRE
-        CreateToggle(tabContents[2], "Fire Rate", "fireOn")
-        CreateToggle(tabContents[2], "Trigger Bot", "triggerBot")
-        CreateToggle(tabContents[2], "Burst Fire", "burstFire")
-        CreateToggle(tabContents[2], "Kill Aura", "killAuraOn")
-        CreateToggle(tabContents[2], "Anti AFK", "antiAfk")
-        CreateSlider(tabContents[2], "Fire Rate", "fireRate", 0.01, 1)
-        CreateSlider(tabContents[2], "Burst Count", "burstCount", 1, 10)
-        CreateSlider(tabContents[2], "Kill Aura Range", "killAuraRange", 5, 100)
-        
-        -- ESP
-        CreateToggle(tabContents[3], "ESP", "espOn")
-        CreateToggle(tabContents[3], "Health", "showHealth")
-        CreateToggle(tabContents[3], "Name", "showName")
-        CreateToggle(tabContents[3], "Distance", "showDistance")
-        CreateToggle(tabContents[3], "Glow", "glowOn")
-        CreateToggle(tabContents[3], "Tracer", "tracer")
-        CreateToggle(tabContents[3], "Skeleton", "skeleton")
-        CreateToggle(tabContents[3], "Box Filled", "boxFilled")
-        
-        -- MOVE
-        CreateToggle(tabContents[4], "Fly", "flyOn")
-        CreateToggle(tabContents[4], "Noclip", "noclipOn")
-        CreateToggle(tabContents[4], "BHop", "bhop")
-        CreateToggle(tabContents[4], "Infinite Jump", "infiniteJump")
-        CreateToggle(tabContents[4], "Auto Sprint", "autoSprint")
-        CreateToggle(tabContents[4], "Anti Stun", "antiStun")
-        CreateToggle(tabContents[4], "No Fall", "noFall")
-        CreateToggle(tabContents[4], "Water Walk", "waterWalk")
-        CreateToggle(tabContents[4], "Spider Man", "spiderMan")
-        CreateToggle(tabContents[4], "Air Jump", "airJump")
-        CreateToggle(tabContents[4], "Moon Jump", "moonJump")
-        CreateToggle(tabContents[4], "Slide", "slideOn")
-        CreateToggle(tabContents[4], "Dash", "dashOn")
-        CreateToggle(tabContents[4], "Teleport", "teleportOn")
-        CreateSlider(tabContents[4], "Speed", "speed", 16, 200)
-        CreateSlider(tabContents[4], "Jump Power", "jump", 50, 300)
-        CreateSlider(tabContents[4], "Fly Speed", "flySpeed", 1, 20)
-        CreateSlider(tabContents[4], "Moon Jump Power", "moonJumpPower", 100, 500)
-        CreateSlider(tabContents[4], "Slide Speed", "slideSpeed", 10, 100)
-        CreateSlider(tabContents[4], "Dash Distance", "dashDistance", 10, 100)
-        CreateSlider(tabContents[4], "Teleport Distance", "teleportDistance", 10, 200)
-        
-        -- VISUAL
-        CreateToggle(tabContents[5], "Crosshair", "crosshairOn")
-        CreateToggle(tabContents[5], "FOV Changer", "fovChanger")
-        CreateToggle(tabContents[5], "Brightness", "brightness")
-        CreateToggle(tabContents[5], "Fog", "fogOn")
-        CreateToggle(tabContents[5], "Bloom", "bloom")
-        CreateSlider(tabContents[5], "FOV Value", "fovValue", 30, 120)
-        CreateSlider(tabContents[5], "Brightness Value", "brightnessValue", 0.5, 3)
-        
-        -- EXTRA
-        CreateToggle(tabContents[6], "Auto Collect", "autoCollectOn")
-        CreateToggle(tabContents[6], "Speed Hack", "speedHackOn")
-        CreateToggle(tabContents[6], "Jump Hack", "jumpHackOn")
-        CreateToggle(tabContents[6], "NoClip Fly", "noClipFlyOn")
-        CreateToggle(tabContents[6], "God Mode", "godModeOn")
-        CreateToggle(tabContents[6], "Invisible", "invisOn")
-        CreateToggle(tabContents[6], "Auto Farm", "autoFarmOn")
-        CreateToggle(tabContents[6], "Auto Click", "autoClickOn")
-        CreateSlider(tabContents[6], "Auto Collect Range", "autoCollectRange", 10, 100)
-        CreateSlider(tabContents[6], "Auto Collect Delay", "autoCollectDelay", 0.1, 3)
-        CreateSlider(tabContents[6], "Speed Multiplier", "speedHackMultiplier", 1, 10)
-        CreateSlider(tabContents[6], "Jump Multiplier", "jumpHackMultiplier", 1, 10)
-        CreateSlider(tabContents[6], "NoClip Fly Speed", "noClipFlySpeed", 1, 50)
-        CreateSlider(tabContents[6], "God Mode Health", "godModeHealth", 100, 9999)
-        CreateSlider(tabContents[6], "Invis Opacity", "invisOpacity", 0.1, 1)
-        CreateSlider(tabContents[6], "Auto Farm Delay", "autoFarmDelay", 0.1, 5)
-        CreateSlider(tabContents[6], "Auto Farm Range", "autoFarmRange", 10, 200)
-        CreateSlider(tabContents[6], "Auto Click Delay", "autoClickDelay", 0.05, 1)
-        CreateSlider(tabContents[6], "Auto Click Range", "autoClickRange", 5, 100)
-        
-        -- SIZE
-        local sizeInfo = Instance.new("TextLabel")
-        sizeInfo.Size = UDim2.new(1, -10, 0, 60)
-        sizeInfo.BackgroundTransparency = 1
-        sizeInfo.Text = "Используй кнопки + и − вверху окна для изменения размера интерфейса.\n\nГорячие клавиши:\nRightShift — скрыть/показать\nR — аварийное закрытие"
-        sizeInfo.TextColor3 = Color3.fromRGB(220, 220, 255)
-        sizeInfo.TextScaled = true
-        sizeInfo.Font = Enum.Font.Gotham
-        sizeInfo.TextWrapped = true
-        sizeInfo.Parent = tabContents[7]
-        
-        -- ============================================
-        -- ОБРАБОТЧИКИ КНОПОК
-        -- ============================================
-        closeBtn.MouseButton1Click:Connect(function()
-            gui:Destroy()
-        end)
-        
-        local minimized = false
-        toggleBtn.MouseButton1Click:Connect(function()
-            minimized = not minimized
-            if minimized then
-                main.Size = UDim2.new(0, 480 * uiSize, 0, 65)
-                toggleBtn.Text = "+"
-            else
-                main.Size = UDim2.new(0, 480 * uiSize, 0, 640 * uiSize)
-                toggleBtn.Text = "−"
-            end
-        end)
-        
-        return gui
-    end
-    
-    -- ============================================
-    -- ВОЗРОЖДЕНИЕ ИГРОКА
-    -- ============================================
-    local function getRoot()
-        local char = lp.Character
-        if not char then return nil end
-        return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
-    end
-    
-    local function getHumanoid()
-        local char = lp.Character
-        if not char then return nil end
-        return char:FindFirstChildOfClass("Humanoid")
-    end
-    
-    -- ============================================
-    -- ПОИСК ЦЕЛИ ДЛЯ AIM
-    -- ============================================
-    local function getClosestPlayer()
-        local closest = nil
-        local shortest = settings.radius
-        local mousePos = UserInputService:GetMouseLocation()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character then
-                local part = p.Character:FindFirstChild(settings.aimPart) or p.Character:FindFirstChild("HumanoidRootPart")
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                if part and hum and hum.Health > 0 then
-                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                    if onScreen then
-                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                        if dist < shortest then
-                            shortest = dist
-                            closest = p
-                        end
-                    end
-                end
-            end
-        end
-        return closest
-    end
-    
-    -- ============================================
-    -- ESP СИСТЕМА
-    -- ============================================
-    local espObjects = {}
-    
-    local colorMap = {
-        Violet = Color3.fromRGB(180, 60, 255),
-        Red = Color3.fromRGB(255, 50, 50),
-        Green = Color3.fromRGB(0, 255, 100),
-        Blue = Color3.fromRGB(50, 150, 255),
-        White = Color3.fromRGB(255, 255, 255),
+-- ============================================
+-- DETECTION: классифицировать RemoteEvents по имени
+-- ============================================
+local function classifyRemotes(remotes)
+    local attackNames = {
+        "attack", "fire", "shoot", "damage", "hit", "swing", "weapon",
+        "punch", "stab", "slash", "shootgun", "fireweapon", "useitem",
     }
-    
-    local function clearESP()
-        for _, obj in pairs(espObjects) do
-            if obj and obj.Parent then obj:Destroy() end
+    local skipNames = {
+        "skipnight", "skipday", "votenight", "voteskip", "startnight",
+        "skip", "fastnight", "endnight", "skipdaynight",
+    }
+    for _, r in ipairs(remotes) do
+        local name = string.lower(r.Name)
+        -- Attack?
+        for _, key in ipairs(attackNames) do
+            if string.find(name, key, 1, true) then
+                table.insert(State.attackRemotes, r)
+                log("  Attack remote: " .. r:GetFullName())
+                break
+            end
         end
-        espObjects = {}
-    end
-    
-    local function updateESP()
-        clearESP()
-        if not settings.espOn then return end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character then
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                local root = p.Character:FindFirstChild("HumanoidRootPart")
-                if hum and root and hum.Health > 0 then
-                    if settings.espType == "Highlight" then
-                        local hl = Instance.new("Highlight")
-                        hl.Parent = espFolder
-                        hl.Adornee = p.Character
-                        hl.FillColor = colorMap[settings.espColor] or colorMap.Violet
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.FillTransparency = 0.5
-                        hl.OutlineTransparency = 0
-                        espObjects[p] = hl
-                    end
-                end
+        -- Skip?
+        for _, key in ipairs(skipNames) do
+            if string.find(name, key, 1, true) then
+                table.insert(State.skipRemotes, r)
+                log("  Skip remote: " .. r:GetFullName())
+                break
             end
         end
     end
-    
-    if not espFolder.Parent then
-        espFolder.Parent = workspace
+end
+
+-- ============================================
+-- DETECTION: найти значение состояния день/ночь
+-- ============================================
+local function findNightStateValue()
+    -- Ищем IntValue/BoolValue/StringValue с именами типа "IsNight", "Night", "Phase"
+    local candidates = { "IsNight", "Night", "Phase", "GamePhase", "TimeOfDay",
+                         "DayNight", "IsDay", "CurrentWave", "Wave" }
+    for _, name in ipairs(candidates) do
+        local v = ReplicatedStorage:FindFirstChild(name, true)
+        if v and v:IsA("ValueBase") then
+            log("Найдено состояние: " .. v:GetFullName() .. " = " .. tostring(v.Value))
+            return v
+        end
+        v = Workspace:FindFirstChild(name, true)
+        if v and v:IsA("ValueBase") then
+            log("Найдено состояние (ws): " .. v:GetFullName() .. " = " .. tostring(v.Value))
+            return v
+        end
     end
-    
-    -- ============================================
-    -- ПРИЦЕЛ
-    -- ============================================
-    local function createCrosshair()
-        if crosshair then crosshair:Destroy() end
-        local gui = Instance.new("ScreenGui")
-        gui.Parent = lp:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
-        gui.Name = "ObsidianCrosshair"
-        gui.ResetOnSpawn = false
-        crosshair = gui
-        
-        local dot = Instance.new("Frame")
-        dot.Size = UDim2.new(0, 4, 0, 4)
-        dot.Position = UDim2.new(0.5, -2, 0.5, -2)
-        dot.BackgroundColor3 = colorMap[settings.crosshairColor] or colorMap.Violet
-        dot.BorderSizePixel = 0
-        dot.Parent = gui
-        local dc = Instance.new("UICorner")
-        dc.CornerRadius = UDim.new(1, 0)
-        dc.Parent = dot
+    return nil
+end
+
+-- ============================================
+-- DETECTION: найти Shredder
+-- ============================================
+local function findShredder()
+    for _, name in ipairs(CONFIG.SHREDDER_SEARCH_NAMES) do
+        local obj = Workspace:FindFirstChild(name, true)
+        if obj and obj:IsA("Model") then
+            -- Найти BasePart внутри
+            local part = obj:FindFirstChildWhichIsA("BasePart", true)
+            if part then
+                log("Найден Shredder: " .. obj:GetFullName())
+                return part
+            end
+        elseif obj and obj:IsA("BasePart") then
+            log("Найден Shredder (part): " .. obj:GetFullName())
+            return obj
+        end
     end
-    createCrosshair()
-    
-    -- ============================================
-    -- ГЛАВНЫЙ ЦИКЛ
-    -- ============================================
-    local function mainLoop()
-        RunService.RenderStepped:Connect(function()
-            -- AIM
-            if settings.aimOn then
-                local t = getClosestPlayer()
-                if t and t.Character then
-                    local part = t.Character:FindFirstChild(settings.aimPart) or t.Character:FindFirstChild("Head")
-                    if part then
-                        local targetPos = part.Position
-                        if settings.prediction then
-                            local vel = part.AssemblyLinearVelocity
-                            targetPos = targetPos + vel * 0.1
+    return nil
+end
+
+-- ============================================
+-- СТАТУС ВРАГА: получить Humanoid и Root из model
+-- ============================================
+local function getEnemyData(model)
+    if not model or not model.Parent then return nil end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return nil end
+    local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChildWhichIsA("BasePart")
+    if not root then return nil end
+    return { model = model, humanoid = hum, root = root }
+end
+
+-- ============================================
+-- ПРОВЕРКА: является ли враг боссом
+-- ============================================
+local function isBossName(name)
+    if not name then return false end
+    local lower = string.lower(name)
+    for _, key in ipairs(CONFIG.KNOWN_BOSSES) do
+        if string.find(lower, key, 1, true) then
+            return true, key
+        end
+    end
+    return false
+end
+
+local function isBossByHP(hum)
+    return hum and hum.MaxHealth >= CONFIG.BOSS_HP_THRESHOLD
+end
+
+-- ============================================
+-- ПОЛУЧИТЬ СПИСОК ВСЕХ ЖИВЫХ ВРАГОВ
+-- ============================================
+local function getAllEnemies()
+    local enemies = {}
+    local root = getRoot()
+    if not root then return enemies end
+
+    local function checkModel(model)
+        local data = getEnemyData(model)
+        if not data then return end
+        -- Исключить самого игрока
+        if model == LocalPlayer.Character then return end
+        -- Проверить дистанцию
+        local dist = (data.root.Position - root.Position).Magnitude
+        if dist > CONFIG.COMBAT_RADIUS then return end
+        data.distance = dist
+        data.isBoss, data.bossKey = isBossName(model.Name)
+        if not data.isBoss and isBossByHP(data.humanoid) then
+            data.isBoss = true
+            data.bossKey = "highhp"
+        end
+        table.insert(enemies, data)
+    end
+
+    if State.enemyFolder and State.enemyFolder ~= Workspace then
+        for _, child in ipairs(State.enemyFolder:GetChildren()) do
+            if child:IsA("Model") then checkModel(child) end
+        end
+    else
+        -- Сканируем workspace
+        for _, child in ipairs(Workspace:GetChildren()) do
+            if child:IsA("Model") and child ~= LocalPlayer.Character then
+                -- Проверяем что у model есть Humanoid
+                if child:FindFirstChildOfClass("Humanoid") then
+                    checkModel(child)
+                end
+            end
+        end
+    end
+
+    -- Сортировка: боссы приоритетнее, затем ближайшие
+    table.sort(enemies, function(a, b)
+        if a.isBoss and not b.isBoss then return true end
+        if not a.isBoss and b.isBoss then return false end
+        return a.distance < b.distance
+    end)
+    return enemies
+end
+
+-- ============================================
+-- ПЕРЕМЕЩЕНИЕ к цели (через CFrame для простоты и скорости)
+-- ============================================
+local function travelTo(targetPos)
+    local root = getRoot()
+    local hum = getHumanoid()
+    if not root or not hum then return end
+
+    local dist = (targetPos - root.Position).Magnitude
+    if dist <= CONFIG.ATTACK_RANGE then return true end
+
+    -- BodyVelocity для плавного перемещения
+    local bv = root:FindFirstChild("__travel_bv")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "__travel_bv"
+        bv.MaxForce = Vector3.new(1, 0, 1) * 1e5
+        bv.Velocity = Vector3.zero
+        bv.Parent = root
+    end
+    local dir = (targetPos - root.Position)
+    dir = Vector3.new(dir.X, 0, dir.Z)  -- только горизонталь
+    if dir.Magnitude > 0.1 then
+        bv.Velocity = dir.Unit * CONFIG.TRAVEL_SPEED
+    end
+    return false
+end
+
+local function stopTravel()
+    local root = getRoot()
+    if not root then return end
+    local bv = root:FindFirstChild("__travel_bv")
+    if bv then bv:Destroy() end
+end
+
+-- ============================================
+-- ТЕЛЕПОРТ (мгновенный) - fallback если travel не работает
+-- ============================================
+local function teleportTo(pos)
+    local root = getRoot()
+    if not root then return end
+    root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+end
+
+-- ============================================
+-- АТАКА: все доступные методы
+-- ============================================
+local function attackEnemy(enemy)
+    local root = getRoot()
+    if not root then return end
+    local now = tick()
+    if now - State.lastAttack < CONFIG.ATTACK_COOLDOWN then return end
+    State.lastAttack = now
+
+    -- 1. Активировать текущий tool (если есть)
+    local char = LocalPlayer.Character
+    if char then
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            pcall(function() tool:Activate() end)
+            -- Подойти вплотную
+            local targetPos = enemy.root.Position
+            local dir = (targetPos - root.Position)
+            if dir.Magnitude > 0 then
+                root.CFrame = CFrame.new(targetPos + dir.Unit * 4, targetPos)
+            end
+        end
+    end
+
+    -- 2. Fire attack remotes
+    for _, r in ipairs(State.attackRemotes) do
+        pcall(function()
+            if r:IsA("RemoteEvent") then
+                r:FireServer(enemy.model)
+                r:FireServer(enemy.root)
+                r:FireServer(enemy.humanoid)
+            elseif r:IsA("RemoteFunction") then
+                pcall(function() r:InvokeServer(enemy.model) end)
+                pcall(function() r:InvokeServer(enemy.root) end)
+            end
+        end)
+    end
+
+    -- 3. Прямая попытка убить (работает в некоторых executor'ах через __namecall)
+    pcall(function()
+        if enemy.humanoid and enemy.humanoid.Health > 0 then
+            enemy.humanoid.Health = 0
+        end
+    end)
+
+    -- 4. Touch с handle инструмента (для melee)
+    if char then
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            local handle = tool:FindFirstChild("Handle")
+            if handle and enemy.root then
+                pcall(function()
+                    firetouchinterest(handle, enemy.root, 0)
+                    firetouchinterest(handle, enemy.root, 1)
+                end)
+            end
+        end
+    end
+end
+
+-- ============================================
+-- СКИП НОЧИ / СКИП ДНЯ
+-- ============================================
+local function trySkipNight()
+    if #State.skipRemotes == 0 then return false end
+    for _, r in ipairs(State.skipRemotes) do
+        pcall(function()
+            if r:IsA("RemoteEvent") then
+                r:FireServer()
+            elseif r:IsA("RemoteFunction") then
+                pcall(function() r:InvokeServer() end)
+            end
+        end)
+    end
+    log("Skip-night вызван (" .. #State.skipRemotes .. " remotes)")
+    return true
+end
+
+-- ============================================
+-- ПОИСК КНОПКИ SKIP в PlayerGui
+-- ============================================
+local function findSkipButton()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, desc in ipairs(gui:GetDescendants()) do
+                if desc:IsA("TextButton") or desc:IsA("ImageButton") then
+                    local name = string.lower(desc.Name)
+                    local text = desc.Text and string.lower(desc.Text) or ""
+                    if string.find(name, "skip", 1, true)
+                       or string.find(text, "skip", 1, true)
+                       or string.find(text, "vote", 1, true)
+                       or string.find(text, "next", 1, true)
+                       or string.find(name, "vote", 1, true)
+                       or string.find(name, "next", 1, true) then
+                        if desc.Visible ~= false and desc.Active ~= false then
+                            return desc
                         end
-                        local currentCF = Camera.CFrame
-                        local targetCF = CFrame.new(currentCF.Position, targetPos)
-                        Camera.CFrame = currentCF:Lerp(targetCF, settings.smooth)
                     end
                 end
             end
-            
-            -- SPEED / JUMP
-            local hum = getHumanoid()
-            if hum then
-                if settings.speedHackOn then
-                    hum.WalkSpeed = settings.speed * settings.speedHackMultiplier
-                else
-                    hum.WalkSpeed = settings.speed
+        end
+    end
+    return nil
+end
+
+-- ============================================
+-- ПРОВЕРКА: все ли боссы убиты?
+-- ============================================
+local function allBossesKilled()
+    for _, key in ipairs(CONFIG.KNOWN_BOSSES) do
+        if not State.killedBosses[key] then
+            return false
+        end
+    end
+    return true
+end
+
+-- ============================================
+-- UI: простая понель статуса
+-- ============================================
+local function createUI()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "BodAutoFarm"
+    gui.ResetOnSpawn = false
+    gui.DisplayOrder = 9999
+    gui.IgnoreGuiInset = true
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 280, 0, 140)
+    frame.Position = UDim2.new(1, -300, 0, 20)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 5, 25)
+    frame.BackgroundTransparency = 0.05
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 10)
+    c.Parent = frame
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(180, 60, 255)
+    s.Thickness = 2
+    s.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 28)
+    title.BackgroundTransparency = 1
+    title.Text = "BAKE OR DIE :: AFK FARM"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamBold
+    title.Parent = frame
+
+    State.statusText = Instance.new("TextLabel")
+    State.statusText.Size = UDim2.new(1, -20, 0, 90)
+    State.statusText.Position = UDim2.new(0, 10, 0, 32)
+    State.statusText.BackgroundTransparency = 1
+    State.statusText.Text = "Инициализация..."
+    State.statusText.TextColor3 = Color3.fromRGB(220, 220, 255)
+    State.statusText.TextScaled = true
+    State.statusText.Font = Enum.Font.Gotham
+    State.statusText.TextWrapped = true
+    State.statusText.TextYAlignment = Enum.TextYAlignment.Top
+    State.statusText.Parent = frame
+
+    State.ui = gui
+    return gui
+end
+
+local function updateStatus(text)
+    if State.statusText then
+        State.statusText.Text = text
+    end
+    log(text)
+end
+
+-- ============================================
+-- ПОДГОТОВКА ПЕРСОНАЖА
+-- ============================================
+local function setupCharacter()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    -- Увеличить WalkSpeed на всякий случай
+    hum.WalkSpeed = math.max(hum.WalkSpeed, 32)
+    -- Auto-equip первый tool из Backpack
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        local tool = backpack:FindFirstChildOfClass("Tool")
+        if tool then
+            hum:EquipTool(tool)
+            log("Экипирован инструмент: " .. tool.Name)
+        end
+    end
+end
+
+-- ============================================
+-- ANTI-AFK
+-- ============================================
+local function setupAntiAfk()
+    LocalPlayer.Idled:Connect(function()
+        if CONFIG.ANTI_AFK then
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end
+    end)
+end
+
+-- ============================================
+-- ОСНОВНОЙ ЦИКЛ
+-- ============================================
+local function mainLoop()
+    while State.running do
+        local root = getRoot()
+        if root then
+            if State.pureSkipMode then
+                -- РЕЖИМ PURE SKIP
+                local skipBtn = findSkipButton()
+                if skipBtn then
+                    pcall(function()
+                        skipBtn.MouseButton1Click:Fire()
+                        -- Альтернатива: использовать firesignal
+                        if firesignal then firesignal(skipBtn.MouseButton1Click) end
+                    end)
                 end
-                if settings.jumpHackOn then
-                    hum.JumpPower = settings.jump * settings.jumpHackMultiplier
-                else
-                    hum.JumpPower = settings.jump
-                end
-            end
-            
-            -- NOCLIP
-            if settings.noclipOn then
-                local char = lp.Character
-                if char then
-                    for _, p in ipairs(char:GetDescendants()) do
-                        if p:IsA("BasePart") and p.CanCollide then
-                            p.CanCollide = false
-                        end
-                    end
-                end
-            end
-            
-            -- FLY
-            if settings.flyOn then
-                local root = getRoot()
-                if root then
-                    if not flyBody then
-                        flyBody = Instance.new("BodyVelocity")
-                        flyBody.Parent = root
-                    end
-                    local dir = Vector3.zero
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
-                    flyBody.Velocity = dir * settings.flySpeed * 50
-                end
+                trySkipNight()
+                updateStatus("РЕЖИМ PURE-SKIP\nВсе боссы убиты!\nСкипаем ночи...")
+                task.wait(2)
             else
-                if flyBody then flyBody:Destroy() flyBody = nil end
-            end
-            
-            -- FOV
-            if settings.fovChanger then
-                Camera.FieldOfView = settings.fovValue
-            end
-            
-            -- BRIGHTNESS
-            if settings.brightness then
-                Lighting.Brightness = settings.brightnessValue
-            end
-            
-            -- CROSSHAIR
-            if crosshair then
-                crosshair.Enabled = settings.crosshairOn
-            end
-        end)
-        
-        -- ESP LOOP (медленнее)
-        task.spawn(function()
-            while task.wait(0.5) do
-                updateESP()
-            end
-        end)
-        
-        -- AUTO FARM / AUTO CLICK / AUTO COLLECT LOOP
-        task.spawn(function()
-            while task.wait(0.2) do
-                local root = getRoot()
-                if not root then else
-                    -- Auto Click
-                    if settings.autoClickOn then
-                        -- простая авто-клик реализация через mouse click эмуляцию (если поддерживается executor)
+                -- РЕЖИМ ФАРМА
+                local enemies = getAllEnemies()
+                if #enemies == 0 then
+                    -- Врагов нет — попытаться скипнуть ночь/дождаться ночи
+                    local skipBtn = findSkipButton()
+                    if skipBtn then
                         pcall(function()
-                            if mouse1press then
-                                mouse1press()
-                                task.wait(settings.autoClickDelay)
-                                mouse1release()
-                            end
+                            if firesignal then firesignal(skipBtn.MouseButton1Click) end
                         end)
                     end
+                    trySkipNight()
+                    stopTravel()
+                    local killedList = ""
+                    for k, _ in pairs(State.killedBosses) do
+                        killedList = killedList .. k .. ", "
+                    end
+                    updateStatus("Ожидание врагов...\nУбито боссов: " .. killedList)
+                    task.wait(1)
+                else
+                    -- Ближайший враг (приоритет босс)
+                    local target = enemies[1]
+                    local dist = target.distance
+
+                    -- Запомнить босса
+                    if target.isBoss and target.bossKey then
+                        -- Бьём до смерти, потом отметим
+                    end
+
+                    if dist <= CONFIG.ATTACK_RANGE then
+                        stopTravel()
+                        attackEnemy(target)
+                        updateStatus(string.format(
+                            "АТАКА: %s%s\nHP: %d/%d\nДист: %d",
+                            target.model.Name,
+                            target.isBoss and " [BOSS]" or "",
+                            math.floor(target.humanoid.Health),
+                            math.floor(target.humanoid.MaxHealth),
+                            math.floor(dist)
+                        ))
+                    else
+                        travelTo(target.root.Position)
+                        updateStatus(string.format(
+                            "Иду к: %s%s\nДист: %d",
+                            target.model.Name,
+                            target.isBoss and " [BOSS]" or "",
+                            math.floor(dist)
+                        ))
+                    end
+
+                    -- Проверка — если враг умер, отметить босса
+                    if target.humanoid.Health <= 0 and target.isBoss and target.bossKey then
+                        if not State.killedBosses[target.bossKey] then
+                            State.killedBosses[target.bossKey] = true
+                            log("★ БОСС УБИТ: " .. target.model.Name .. " (key=" .. target.bossKey .. ")")
+                            -- Проверить, все ли убиты
+                            if allBossesKilled() then
+                                State.pureSkipMode = true
+                                log("★ ВСЕ БОССЫ УБИТЫ — переключение в PURE-SKIP режим")
+                            end
+                        end
+                    end
+
+                    task.wait(CONFIG.LOOP_DELAY)
                 end
             end
-        end)
+        else
+            updateStatus("Жду персонажа...")
+            task.wait(1)
+        end
     end
-    
-    -- ============================================
-    -- ВВОД
-    -- ============================================
+end
+
+-- ============================================
+-- ВВОД: горячие клавиши
+-- ============================================
+local function setupInput()
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if input.KeyCode == Enum.KeyCode.RightShift then
-            local gui = lp:FindFirstChild("PlayerGui") and lp.PlayerGui:FindFirstChild("ObsidianBlack")
-            if gui then gui.Enabled = not gui.Enabled end
-        elseif input.KeyCode == Enum.KeyCode.R then
-            local gui = lp:FindFirstChild("PlayerGui") and lp.PlayerGui:FindFirstChild("ObsidianBlack")
-            if gui then gui:Destroy() end
-        elseif settings.infiniteJump and input.KeyCode == Enum.KeyCode.Space then
-            local hum = getHumanoid()
-            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+            if State.ui then
+                State.ui.Enabled = not State.ui.Enabled
+            end
+        elseif input.KeyCode == Enum.KeyCode.F6 then
+            State.running = false
+            stopTravel()
+            if State.ui then State.ui:Destroy() end
+            warnLog("Скрипт остановлен пользователем (F6)")
         end
     end)
-    
-    -- ============================================
-    -- ANTI AFK
-    -- ============================================
-    local vu = game:GetService("VirtualUser")
-    lp.Idled:Connect(function()
-        if settings.antiAfk then
-            vu:CaptureController()
-            vu:ClickButton2(Vector2.new())
+end
+
+-- ============================================
+-- АВТО-ЭКИПИРОВКА ПРИ ПОДНЯТИИ ОРУЖИЯ
+-- ============================================
+local function setupAutoEquip()
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        task.wait(1)
+        setupCharacter()
+    end)
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                task.wait(0.3)
+                local hum = getHumanoid()
+                local equipped = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if hum and not equipped then
+                    hum:EquipTool(child)
+                end
+            end
+        end)
+    end
+end
+
+-- ============================================
+-- ПЕРИОДИЧЕСКОЕ ОБНОВЛЕНИЕ ССЫЛОК (раз в 30с)
+-- ============================================
+local function setupRescanLoop()
+    task.spawn(function()
+        while State.running do
+            task.wait(30)
+            -- Обновить shredder
+            if not State.shredderPart or not State.shredderPart.Parent then
+                State.shredderPart = findShredder()
+            end
+            -- Обновить night state value
+            if not State.nightStateValue or not State.nightStateValue.Parent then
+                State.nightStateValue = findNightStateValue()
+            end
         end
     end)
-    
-    -- ============================================
-    -- ЗАПУСК
-    -- ============================================
-    CreateObsidianUI()
+end
+
+-- ============================================
+-- ИНИЦИАЛИЗАЦИЯ
+-- ============================================
+local function init()
+    log("=== BAKE OR DIE AUTO-FARM v1.0 ===")
+    log("Сканирую игру...")
+
+    -- 1. UI
+    createUI()
+
+    -- 2. Найти папку врагов
+    State.enemyFolder = findEnemyFolder()
+
+    -- 3. Найти все RemoteEvents
+    local allRemotes = {}
+    scanForRemotes(ReplicatedStorage, 0, allRemotes, 8)
+    scanForRemotes(Workspace, 0, allRemotes, 3)
+    log("Найдено RemoteEvent/Function: " .. #allRemotes)
+    classifyRemotes(allRemotes)
+
+    -- 4. Найти состояние ночь/день
+    State.nightStateValue = findNightStateValue()
+
+    -- 5. Найти Shredder
+    State.shredderPart = findShredder()
+
+    -- 6. Настроить персонажа
+    setupCharacter()
+
+    -- 7. Anti-AFK
+    setupAntiAfk()
+
+    -- 8. Auto-equip
+    setupAutoEquip()
+
+    -- 9. Rescan loop
+    setupRescanLoop()
+
+    -- 10. Input
+    setupInput()
+
+    -- 11. Отчёт
+    local bossList = table.concat(CONFIG.KNOWN_BOSSES, ", ")
+    log("Известные боссы: " .. bossList)
+    log("Attack remotes: " .. #State.attackRemotes)
+    log("Skip remotes: " .. #State.skipRemotes)
+    log("Shredder: " .. (State.shredderPart and "найден" or "не найден"))
+    log("Night state: " .. (State.nightStateValue and "найден" or "не найден"))
+    log("Запуск основного цикла...")
+
+    -- 12. Старт
     mainLoop()
 end
 
 -- ============================================
--- СТАРТ
+-- ЗАПУСК
 -- ============================================
-CreateKeyWindow()
+local ok, err = pcall(init)
+if not ok then
+    warnLog("FATAL: " .. tostring(err))
+end
